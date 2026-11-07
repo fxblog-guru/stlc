@@ -1,0 +1,30 @@
+openapi: 3.1.0
+info:
+  title: orders (fixture)
+  version: 1.0.0
+paths:
+  /orders:
+    get:
+      operationId: listOrders
+      responses:
+        '200': { description: the caller's orders }
+    post:
+      operationId: createOrder
+      responses:
+        '201': { description: created }
+        '400': { description: invalid }
+  /orders/{id}:
+    get:
+      operationId: getOrder
+      responses:
+        '200': { description: the order }
+    delete:
+      operationId: deleteOrder
+      responses:
+        '204': { description: deleted }
+  /admin/orders:
+    get:
+      operationId: adminListOrders
+      responses:
+        '200': { description: every tenant's orders }
+        '403': { description: not an admin }

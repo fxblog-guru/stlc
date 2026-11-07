@@ -1,0 +1,12 @@
+# Maestro workspace for <qa-root>/scripts/mobile (CONTRACTS §15, PROJECT-PROFILE §Mobile testing).
+# The runner passes this file with --config and the module folders as flow paths, so discovery is:
+# every case flow under scripts/mobile/<module>/, and nothing under shared/ (subflows are not tests).
+flows:
+  - "**/TC-MOB-*.yaml"
+  - "!**/shared/**"
+# Suite selection comes from the runner (--include-tags / --exclude-tags), not from here, so the
+# same workspace serves smoke, regression and a run plan.
+excludeTags:
+  - quarantined
+executionOrder:
+  continueOnFailure: true

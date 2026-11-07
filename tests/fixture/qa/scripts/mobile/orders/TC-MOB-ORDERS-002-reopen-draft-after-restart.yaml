@@ -1,0 +1,43 @@
+appId: ${APP_ID}
+name: TC-MOB-ORDERS-002 — [Orders · Android, iOS] Orders screen — Standard user restarts the app → the seeded draft is listed as Draft
+tags:
+  - mobile
+  - orders
+  - P1
+  - smoke
+onFlowStart:
+  - runScript: ../../shared/maestro/scripts/run-context.js
+  - runScript: ../../shared/maestro/elements/app.js
+  - runScript: ../../shared/maestro/elements/orders.js
+  - runFlow:
+      file: ../../shared/maestro/flows/orders/create-order.yaml
+      env:
+        STATUS: Draft
+onFlowComplete:
+  - runFlow: ../../shared/maestro/flows/cleanup.yaml
+---
+- runFlow:
+    label: "Step 1: launch with cleared state and sign in as standard → home screen visible"
+    commands:
+      - runFlow: ../../shared/maestro/flows/launch-clean.yaml
+      - runFlow:
+          file: ../../shared/maestro/flows/sign-in.yaml
+          env:
+            ACTOR: standard
+- runFlow:
+    label: "Step 2: open Orders → the seeded draft is listed"
+    commands:
+      - tapOn:
+          id: ${output.orders.tab}
+      - extendedWaitUntil:
+          visible:
+            text: ${output.unique.order}
+          timeout: ${output.T.screen}
+- runFlow:
+    label: "Step 3: open the seeded draft → status shows Draft"
+    commands:
+      - tapOn:
+          text: ${output.unique.order}
+      - assertVisible:
+          id: ${output.orders.status}
+          text: Draft

@@ -1,0 +1,34 @@
+# Evidence policy: heavy native artifacts (traces, screenshots, videos, HTML reports, raw
+# coverage files) stay local; the durable TEXT evidence IS committed, so /qa-report,
+# /qa-signoff, /qa-metrics and /qa-defect stay citable across machines and time:
+#   summary.md · failures.md · findings.md · perf-verdict.md · readiness.md · coverage-summary.md · repo-state.txt · junit.xml
+#   target.json (which system the run judged) · delta.md (what changed since the last run) — CONTRACTS §31
+runs/**
+!runs/**/
+!runs/**/summary.md
+!runs/**/failures.md
+!runs/**/findings.md
+!runs/**/perf-verdict.md
+!runs/**/readiness.md
+!runs/**/coverage-summary.md
+!runs/**/repo-state.txt
+!runs/**/junit.xml
+!runs/**/target.json
+!runs/**/delta.md
+allure-results/
+allure-report/
+node_modules/
+.env.*
+!.env.example
+
+# Derived read model (CONTRACTS §17): rebuilt by the Stop hook, never committed
+state.json
+
+# The kit's own run log, one JSON line per script run (scripts/shared/lib/runlog.mjs)
+logs/
+
+# Signed-in sessions written by the setup project (cookies, tokens): never committed
+.auth/
+
+# /qa-import exports can carry customer data; the inventory and report are committed (CONTRACTS §29)
+imported/exports/

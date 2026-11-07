@@ -1,0 +1,2 @@
+{"timestamp":"2026-10-26T23:08:10.260Z","level":"error","service":"stlc","event":"script.run_completed","run_id":"ecc8b619026d6a7d","slug":null,"args":[],"duration_ms":131,"script":"lint-qa","exit":1}
+{"timestamp":"2026-10-26T23:08:31.468Z","level":"info","service":"stlc","event":"script.run_completed","run_id":"a7fbd961bae3433b","slug":null,"args":[],"duration_ms":150,"script":"lint-qa","exit":0}

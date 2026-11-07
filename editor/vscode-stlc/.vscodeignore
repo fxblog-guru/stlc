@@ -1,0 +1,15 @@
+# vsce keeps everything not listed here. Negations (!) are avoided on purpose: `!out/**`
+# re-includes *everything* under out/, source maps and compiled tests along with it, which is
+# how a 0.1.0 ships its own test suite to every user.
+.vscode/**
+.vscodeignore
+src/**
+out/**/*.map
+out/test/**
+tsconfig.json
+node_modules/**
+package-lock.json
+media/make-icon.mjs
+tools/**
+preview/**
+*.vsix

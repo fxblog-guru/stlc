@@ -1,0 +1,12 @@
+{
+  "checked_at": "2026-10-14T08:00:00Z",
+  "bundles": {
+    "qa": {
+      "installed": "2.0.3",
+      "latest": "2.1.0",
+      "kind": "minor",
+      "command": "afx update --bundle qa",
+      "changelog_url": "https://gitlab.com/agentic-fx/stlc/-/blob/main/CHANGELOG.md"
+    }
+  }
+}

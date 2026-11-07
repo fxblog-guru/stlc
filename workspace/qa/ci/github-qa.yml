@@ -1,0 +1,427 @@
+# github-qa.yml — GitHub Actions template for a project's .stlc/ workspace (agentic-fx-qa).
+# Copy to .github/workflows/qa.yml. Same jobs, same semantics as .stlc/ci/.gitlab-ci.qa.yml —
+# .stlc/ci/README.md has the table for both.
+#
+# Secrets (TEST_USER*, TEST_PASSWORD*, TEST_POOL_PASSWORD, API_TOKEN, DB_CONNECTION…) → repository or
+# environment SECRETS; plain configuration (BASE_URL, API_BASE_URL, AUTH_MODE, AUTH_*_PATH,
+# TEST_POOL_USER, TEST_POOL_SIZE…) → repository or environment VARIABLES. Every Playwright job
+# writes .stlc/.env.$QA_ENV from both with .stlc/ci/write-env.mjs, which prints key NAMES only; secret
+# values stay masked by the runner and are never echoed.
+#
+# PR:       lint → smoke (@smoke minus @quarantined) → changed (--only-changed=<PR base>)
+# Nightly:  regression sharded ×4 (blob reports) → merge (one HTML + junit.xml) · shuffle ·
+#           quarantined (never blocks) · accessibility
+# Manual:   performance / security via workflow_dispatch — a human confirms the authorized env.
+#           ui-baselines (Linux image) · desktop (self-hosted runner labeled `desktop`) — CONTRACTS §20.
+# Run plan: Run workflow → suite: plan, plan: <name> (CONTRACTS §19) — sharded by the plan's
+#           `shards:`, blob reports merged into one report. Smoke and nightly regression run the
+#           `smoke` / `regression` run plans when .stlc/run-plans/ has them, the tag grep otherwise.
+#
+# QA root (CONTRACTS §2): written for `.stlc/`, the default. A project on `qa/` runs
+# `node qa/scripts/shared/migrate-root.mjs --to qa --write` (it rewrites this file), or replaces
+# `.stlc/` with `qa/` and `working-directory: .stlc` with `qa` by hand. Uploads set
+# include-hidden-files: actions/upload-artifact skips a dot folder's files otherwise.
+name: qa
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '0 2 * * 1-5'   # nightly regression, weekdays 02:00 UTC
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: 'regression | accessibility | performance | security | plan (runs the run plan named below) | ui-baselines | desktop'
+        required: true
+        default: regression
+        type: choice
+        options: [regression, accessibility, performance, security, plan, ui-baselines, desktop]
+      plan:
+        description: 'Run plan name — .stlc/run-plans/<name>.md (suite: plan). e.g. smoke, regression, full, release-2026-10'
+        required: false
+        default: ''
+        type: string
+      env:
+        description: 'PROJECT-PROFILE §Environments env (perf/security only on an authorized one)'
+        required: true
+        default: uat
+
+permissions:
+  contents: read
+  checks: write            # junit → the PR's checks tab (test widget)
+  pull-requests: write
+
+env:
+  QA_ENV: ${{ github.event.inputs.env || 'uat' }}
+  # Platform matrix (PROJECT-PROFILE §Platforms, CONTRACTS §20): web · api on hosted runners;
+  # windows/macos need the self-hosted `desktop` job; android/ios the mobile framework repo.
+  PW_PLATFORMS: web,api
+  PW_PROJECTS: chromium
+  # Report hub (PROJECT-PROFILE §Test management): unset VERDICT_URL skips the upload, never fails.
+  VERDICT_URL: ${{ vars.VERDICT_URL }}
+  VERDICT_PROJECT: ${{ vars.VERDICT_PROJECT }}
+  VERDICT_API_KEY: ${{ secrets.VERDICT_API_KEY }}
+  # write-env.mjs reads these two; toJSON never prints them, and secret values are masked in logs.
+  QA_CI_VARS_JSON: ${{ toJSON(vars) }}
+  QA_CI_SECRETS_JSON: ${{ toJSON(secrets) }}
+
+defaults:
+  run:
+    working-directory: .stlc
+
+jobs:
+  # -------------------------------------------------------------------------------------------
+  # PR / push
+  # -------------------------------------------------------------------------------------------
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Install (lockfile when present)
+        run: if [ -f package-lock.json ]; then npm ci --no-audit --no-fund; else npm install --no-audit --no-fund; fi
+      - run: npm run qa:lint      # CONTRACTS.md mechanical checks
+      - run: npm run typecheck    # shared layer + every spec compiles
+      - run: npm run lint         # eslint: no sleeps / skip / only / conditionals / missing asserts
+
+  pr-scan:
+    # The mechanical half of /qa-review-pr (CONTRACTS §21): lost assertions, skips, scripts with no
+    # case, duplicate Case IDs, hand-written quarantine tags, a loosened runner, kit edits, secrets.
+    # Fails on High only; everything else is in the log for the human reviewer. No install needed.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: . } }
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: git fetch --no-tags origin "${{ github.base_ref }}"
+      - run: node .stlc/scripts/shared/pr-scan.mjs --base "origin/${{ github.base_ref }}" --head HEAD --fail-on High
+
+  smoke:
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
+    needs: lint
+    runs-on: ubuntu-latest
+    # Same version as @playwright/test in .stlc/package.json (tests/bundle.test.mjs keeps them equal).
+    container: mcr.microsoft.com/playwright:v1.64.0-noble
+    env:
+      QA_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}-smoke
+      RUN_DIR: runs/ci/${{ github.run_id }}-smoke
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install (lockfile when present)
+        run: if [ -f package-lock.json ]; then npm ci --no-audit --no-fund; else npm install --no-audit --no-fund; fi
+      - name: Write .stlc/.env.$QA_ENV (key names only in the log)
+        run: node ci/write-env.mjs
+      # The `smoke` run plan when it exists (the definition /qa-run --plan smoke runs locally), else the tag grep.
+      - run: if [ -f run-plans/smoke.md ]; then node scripts/shared/run-plan.mjs run smoke --env "$QA_ENV" --run-dir "$RUN_DIR" --no-writeback -- --fail-on-flaky-tests; else npm run test:smoke -- --fail-on-flaky-tests; fi     # @smoke minus @quarantined, budget ≤ 10 min
+      - name: Upload to verdict (reporting never fails the run)
+        if: always()
+        run: node scripts/shared/verdict-upload.mjs --run "$RUN_DIR" --type e2e --slug ci --env "$QA_ENV" --tag smoke || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: qa-runs-smoke, path: .stlc/runs/, retention-days: 14, include-hidden-files: true }
+      - name: Test results → PR checks
+        if: always()
+        uses: mikepenz/action-junit-report@v5
+        with: { report_paths: '.stlc/runs/**/junit.xml', check_name: 'qa smoke' }
+
+  changed:
+    # Every spec that changed in this PR, or imports a file that changed, against the PR base.
+    if: github.event_name == 'pull_request'
+    needs: lint
+    runs-on: ubuntu-latest
+    container: mcr.microsoft.com/playwright:v1.64.0-noble
+    env:
+      QA_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}-changed
+      RUN_DIR: runs/ci/${{ github.run_id }}-changed
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Fetch the PR base
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git fetch --no-tags origin "${{ github.base_ref }}"
+      - name: Install (lockfile when present)
+        run: if [ -f package-lock.json ]; then npm ci --no-audit --no-fund; else npm install --no-audit --no-fund; fi
+      - name: Write .stlc/.env.$QA_ENV (key names only in the log)
+        run: node ci/write-env.mjs
+      - name: Changed specs only
+        env:
+          BASE: origin/${{ github.base_ref }}
+        run: npx playwright test scripts/e2e scripts/api scripts/integration scripts/accessibility --only-changed="$BASE" --grep-invert @quarantined --pass-with-no-tests --fail-on-flaky-tests
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: qa-runs-changed, path: .stlc/runs/, retention-days: 14, include-hidden-files: true }
+      - name: Test results → PR checks
+        if: always()
+        uses: mikepenz/action-junit-report@v5
+        with: { report_paths: '.stlc/runs/**/junit.xml', check_name: 'qa changed' }
+
+  # -------------------------------------------------------------------------------------------
+  # Nightly
+  # -------------------------------------------------------------------------------------------
+  regression:
+    # Sharded by TEST (fullyParallel). Each shard writes a blob report; `report` merges them.
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.event.inputs.suite == 'regression')
+    needs: lint
+    runs-on: ubuntu-latest
+    container: mcr.microsoft.com/playwright:v1.64.0-noble
+    strategy:
+      fail-fast: false
+      matrix:
+        shardIndex: [1, 2, 3, 4]
+        shardTotal: [4]
+    env:
+      PW_BLOB: '1'
+      QA_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}-reg${{ matrix.shardIndex }}
+      RUN_DIR: runs/ci/${{ github.run_id }}-regression/shard-${{ matrix.shardIndex }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install (lockfile when present)
+        run: if [ -f package-lock.json ]; then npm ci --no-audit --no-fund; else npm install --no-audit --no-fund; fi
+      - name: Write .stlc/.env.$QA_ENV (key names only in the log)
+        run: node ci/write-env.mjs
+      # The `regression` run plan when it exists, else the tag grep — both sharded the same way.
+      - run: if [ -f run-plans/regression.md ]; then node scripts/shared/run-plan.mjs run regression --env "$QA_ENV" --run-dir "$RUN_DIR" --no-writeback --shard ${{ matrix.shardIndex }}/${{ matrix.shardTotal }} -- --fail-on-flaky-tests; else npm run test:regression -- --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }} --fail-on-flaky-tests; fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: 'qa-blob-${{ matrix.shardIndex }}', path: '.stlc/${{ env.RUN_DIR }}/blob/', retention-days: 3, include-hidden-files: true }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: 'qa-runs-regression-${{ matrix.shardIndex }}', path: .stlc/runs/, retention-days: 14, include-hidden-files: true }
+
+  report:
+    # One report for the whole nightly: the shards' blob reports merged into HTML + junit.xml.
+    if: always() && needs.regression.result != 'skipped'
+    needs: regression
+    runs-on: ubuntu-latest
+    container: mcr.microsoft.com/playwright:v1.64.0-noble
+    env:
+      RUN_DIR: runs/ci/${{ github.run_id }}-regression
+      PLAYWRIGHT_HTML_OPEN: never
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install (lockfile when present)
+        run: if [ -f package-lock.json ]; then npm ci --no-audit --no-fund; else npm install --no-audit --no-fund; fi
+      - uses: actions/download-artifact@v4
+        with: { pattern: 'qa-blob-*', path: '.stlc/runs/ci/${{ github.run_id }}-regression/blobs', merge-multiple: true }
+      - name: Merge shard reports
+        run: |
+          PLAYWRIGHT_HTML_OUTPUT_DIR="$RUN_DIR/html-report" PLAYWRIGHT_JUNIT_OUTPUT_FILE="$RUN_DIR/junit.xml" \
+            npx playwright merge-reports --reporter html,junit "$RUN_DIR/blobs"
+          test -s "$RUN_DIR/junit.xml"
+      - name: Upload to verdict (reporting never fails the run)
+        if: always()
+        run: node scripts/shared/verdict-upload.mjs --run "$RUN_DIR" --type e2e --slug ci --env "$QA_ENV" --tag regression || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: qa-runs-regression-merged, path: .stlc/runs/, retention-days: 14, include-hidden-files: true }
+      - name: Test results → checks
+        if: always()
+        uses: mikepenz/action-junit-report@v5
+        with: { report_paths: '.stlc/runs/ci/*-regression/junit.xml', check_name: 'qa regression' }
+
+  nightly:
+    # shuffle: the same suite in a random order surfaces hidden dependencies between tests.
+    # quarantined: keeps evidence flowing for /qa-quarantine --release; never blocks.
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.event.inputs.suite == 'accessibility')
+    needs: lint
+    runs-on: ubuntu-latest
+    container: mcr.microsoft.com/playwright:v1.64.0-noble
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: ${{ github.event_name == 'schedule' && fromJSON('["shuffle","accessibility","quarantined"]') || fromJSON('["accessibility"]') }}
+    env:
+      QA_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.suite }}
+      RUN_DIR: runs/ci/${{ github.run_id }}-${{ matrix.suite }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install (lockfile when present)
+        run: if [ -f package-lock.json ]; then npm ci --no-audit --no-fund; else npm install --no-audit --no-fund; fi
+      - name: Write .stlc/.env.$QA_ENV (key names only in the log)
+        run: node ci/write-env.mjs
+      - run: |
+          case "${{ matrix.suite }}" in
+            shuffle)       npm run test:regression -- --shuffle --fail-on-flaky-tests ;;
+            accessibility) npm run test:a11y -- --fail-on-flaky-tests ;;
+            quarantined)   npm run test:quarantined || true ;;   # never blocks
+          esac
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: 'qa-runs-${{ matrix.suite }}', path: .stlc/runs/, retention-days: 14, include-hidden-files: true }
+      - name: Test results → checks
+        if: always()
+        uses: mikepenz/action-junit-report@v5
+        with: { report_paths: '.stlc/runs/**/junit.xml', check_name: 'qa ${{ matrix.suite }}' }
+
+  # -------------------------------------------------------------------------------------------
+  # Manual — a human authorizes the environment
+  # -------------------------------------------------------------------------------------------
+  nonfunctional:
+    # Only by explicit dispatch — CI cannot authorize an environment for load or scanning; a human
+    # does. Bind `environment:` to a protected GitHub environment to require a reviewer as well.
+    if: github.event_name == 'workflow_dispatch' && contains(fromJSON('["performance","security"]'), github.event.inputs.suite)
+    needs: lint
+    runs-on: ubuntu-latest
+    container: mcr.microsoft.com/playwright:v1.64.0-noble
+    environment: ${{ github.event.inputs.env }}
+    env:
+      QA_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}-${{ github.event.inputs.suite }}
+      RUN_DIR: runs/ci/${{ github.run_id }}-${{ github.event.inputs.suite }}
+      PERF_SCRIPT: ${{ vars.PERF_SCRIPT }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install (lockfile when present)
+        run: if [ -f package-lock.json ]; then npm ci --no-audit --no-fund; else npm install --no-audit --no-fund; fi
+      - name: Write .stlc/.env.$QA_ENV (key names only in the log)
+        run: node ci/write-env.mjs
+      - if: github.event.inputs.suite == 'performance'
+        uses: grafana/setup-k6-action@v1
+      - run: |
+          case "${{ github.event.inputs.suite }}" in
+            performance) npm run test:perf -- ${PERF_SCRIPT:?set the PERF_SCRIPT variable to the k6 script path} ;;
+            security)    npm run test:security ;;
+          esac
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: 'qa-runs-${{ github.event.inputs.suite }}', path: .stlc/runs/, retention-days: 14, include-hidden-files: true }
+
+
+  # -------------------------------------------------------------------------------------------
+  # Platforms (CONTRACTS §20) — ui baselines and the platforms that need their own runner
+  # -------------------------------------------------------------------------------------------
+  ui-baselines:
+    # Dispatch suite=ui-baselines: regenerates the `ui` baselines IN THIS IMAGE (Linux) with
+    # --update-snapshots=changed; download the artifact, review every PNG and diff, commit them.
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.suite == 'ui-baselines'
+    needs: lint
+    runs-on: ubuntu-latest
+    container: mcr.microsoft.com/playwright:v1.64.0-noble
+    env:
+      QA_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}-ui-baselines
+      RUN_DIR: runs/ci/${{ github.run_id }}-ui-baselines
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install (lockfile when present)
+        run: if [ -f package-lock.json ]; then npm ci --no-audit --no-fund; else npm install --no-audit --no-fund; fi
+      - name: Write .stlc/.env.$QA_ENV (key names only in the log)
+        run: node ci/write-env.mjs
+      - run: npm run test:ui:update
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: qa-ui-baselines, path: '.stlc/scripts/ui/__screenshots__/', retention-days: 14, include-hidden-files: true }
+
+  desktop:
+    # Dispatch suite=desktop on a self-hosted runner labeled `desktop` (Windows/macOS with the build):
+    # the Electron platforms in the `desktop-electron` project from ELECTRON_APP_PATH (a repository
+    # variable). Native apps (appium-desktop) run in their own repo — staged + HANDOFF.md, /qa-ingest.
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.suite == 'desktop'
+    needs: lint
+    runs-on: [self-hosted, desktop]
+    env:
+      PW_PLATFORMS: windows
+      PW_PROJECTS: desktop-electron
+      ELECTRON_APP_PATH: ${{ vars.ELECTRON_APP_PATH }}
+      QA_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}-desktop
+      RUN_DIR: runs/ci/${{ github.run_id }}-desktop
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install (lockfile when present)
+        run: if [ -f package-lock.json ]; then npm ci --no-audit --no-fund; else npm install --no-audit --no-fund; fi
+      - name: Write .stlc/.env.$QA_ENV (key names only in the log)
+        run: node ci/write-env.mjs
+      - run: npx playwright test scripts/e2e scripts/accessibility scripts/ui --project setup desktop-electron --fail-on-flaky-tests --pass-with-no-tests
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: qa-runs-desktop, path: .stlc/runs/, retention-days: 14, include-hidden-files: true }
+
+  # -------------------------------------------------------------------------------------------
+  # Run plan — Run workflow → suite: plan, plan: <name> (CONTRACTS §19)
+  # -------------------------------------------------------------------------------------------
+  plan-prepare:
+    # Validates and resolves the plan, refuses security/performance on an env PROJECT-PROFILE
+    # §Environments does not authorize, and turns the plan's `shards:` into the matrix below.
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.suite == 'plan'
+    needs: lint
+    runs-on: ubuntu-latest
+    outputs:
+      shard_list: ${{ steps.info.outputs.shard_list }}
+      shards: ${{ steps.info.outputs.shards }}
+      env: ${{ steps.info.outputs.env }}
+      needs_k6: ${{ steps.info.outputs.needs_k6 }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - id: info
+        env:
+          RUN_PLAN: ${{ github.event.inputs.plan }}
+        run: node scripts/shared/run-plan.mjs ci-info "${RUN_PLAN:?set the plan input to a .stlc/run-plans/<name>}" --env "$QA_ENV" --github-output
+
+  plan:
+    # One job per shard of the plan; each writes a blob report (PW_BLOB=1) and its run.json.
+    # QA_RUN_ID per shard, so shards against one environment never collide.
+    if: needs.plan-prepare.result == 'success'
+    needs: plan-prepare
+    runs-on: ubuntu-latest
+    container: mcr.microsoft.com/playwright:v1.64.0-noble
+    environment: ${{ needs.plan-prepare.outputs.env }}
+    strategy:
+      fail-fast: false
+      matrix:
+        shardIndex: ${{ fromJSON(needs.plan-prepare.outputs.shard_list) }}
+    env:
+      QA_ENV: ${{ needs.plan-prepare.outputs.env }}
+      RUN_PLAN: ${{ github.event.inputs.plan }}
+      PW_BLOB: '1'
+      QA_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}-plan${{ matrix.shardIndex }}
+      RUN_DIR: runs/ci/${{ github.run_id }}-plan-${{ github.event.inputs.plan }}/shard-${{ matrix.shardIndex }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install (lockfile when present)
+        run: if [ -f package-lock.json ]; then npm ci --no-audit --no-fund; else npm install --no-audit --no-fund; fi
+      - name: Write .stlc/.env.$QA_ENV (key names only in the log)
+        run: node ci/write-env.mjs
+      - if: needs.plan-prepare.outputs.needs_k6 == 'true'
+        uses: grafana/setup-k6-action@v1
+      - name: Run the plan's shard (k6 / ZAP steps run in shard 1 only)
+        run: node scripts/shared/run-plan.mjs run "$RUN_PLAN" --env "$QA_ENV" --run-dir "$RUN_DIR" --no-writeback --shard ${{ matrix.shardIndex }}/${{ needs.plan-prepare.outputs.shards }} -- --fail-on-flaky-tests
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: 'qa-plan-shard-${{ matrix.shardIndex }}', path: '.stlc/${{ env.RUN_DIR }}/', retention-days: 14, include-hidden-files: true }
+
+  plan-report:
+    # One report for the whole plan: the shards' blob reports merged (merge-reports --reporter
+    # html,junit inside run-plan.mjs merge) + one summary.md with counts per type, plan name, SHA.
+    if: always() && needs.plan.result != 'skipped'
+    needs: plan
+    runs-on: ubuntu-latest
+    container: mcr.microsoft.com/playwright:v1.64.0-noble
+    env:
+      RUN_PLAN: ${{ github.event.inputs.plan }}
+      RUN_DIR: runs/ci/${{ github.run_id }}-plan-${{ github.event.inputs.plan }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install (lockfile when present)
+        run: if [ -f package-lock.json ]; then npm ci --no-audit --no-fund; else npm install --no-audit --no-fund; fi
+      - uses: actions/download-artifact@v4
+        with: { pattern: 'qa-plan-shard-*', path: '.stlc/runs/ci/${{ github.run_id }}-plan-${{ github.event.inputs.plan }}' }
+      - name: Merge shards (one summary.md + junit.xml)
+        run: |
+          for d in "$RUN_DIR"/qa-plan-shard-*; do mv "$d" "$RUN_DIR/shard-${d##*-}"; done
+          node scripts/shared/run-plan.mjs merge "$RUN_PLAN" --run-dir "$RUN_DIR" --no-writeback
+      - name: Upload to verdict (reporting never fails the run)
+        if: always()
+        run: node scripts/shared/verdict-upload.mjs --run "$RUN_DIR" --type e2e --slug ci --env "$QA_ENV" --tag "plan-$RUN_PLAN" || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: qa-runs-plan-merged, path: .stlc/runs/, retention-days: 14, include-hidden-files: true }
+      - name: Test results → checks
+        if: always()
+        uses: mikepenz/action-junit-report@v5
+        with: { report_paths: '.stlc/runs/ci/*-plan-*/junit.xml', check_name: 'qa plan ${{ github.event.inputs.plan }}' }

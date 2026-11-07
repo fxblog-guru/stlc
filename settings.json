@@ -1,0 +1,198 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Read(~/.claude/plugins/**)",
+      "Write",
+      "Bash(npm run test:*)",
+      "Bash(npm run report:*)",
+      "Bash(npm run heal:check)",
+      "Bash(npm run lint)",
+      "Bash(npm run typecheck)",
+      "Bash(npm run qa:lint)",
+      "Bash(npx tsc --noEmit*)",
+      "Bash(npx eslint *)",
+      "Bash(k6 inspect:*)",
+      "Bash(node .claude/skills/publishing-test-cases/scripts/*)",
+      "Bash(node qa/scripts/shared/lint-qa.mjs*)",
+      "Bash(node .stlc/scripts/shared/lint-qa.mjs*)",
+      "Bash(node qa/scripts/shared/contracts.mjs*)",
+      "Bash(node .stlc/scripts/shared/contracts.mjs*)",
+      "Bash(node qa/scripts/unit/coverage-summary.mjs*)",
+      "Bash(node .stlc/scripts/unit/coverage-summary.mjs*)",
+      "Bash(python3 .claude/skills/building-domain-wiki/scripts/raw_to_md_converter.py*)",
+      "Bash(python3 -m rag search*)",
+      "Bash(python3 -m rag status*)",
+      "Bash(dotnet build*)",
+      "Bash(dotnet --version)",
+      "Bash(python3 -m pytest --collect-only*)",
+      "Bash(pytest --collect-only*)",
+      "Bash(mvn -q test-compile*)",
+      "Bash(gradle compileTestJava*)",
+      "Bash(gradle compileTestKotlin*)",
+      "Bash(node qa/scripts/shared/build-state.mjs*)",
+      "Bash(node .stlc/scripts/shared/build-state.mjs*)",
+      "Bash(node qa/scripts/shared/status.mjs*)",
+      "Bash(node .stlc/scripts/shared/status.mjs*)",
+      "Bash(maestro --version)",
+      "Bash(maestro hierarchy*)",
+      "Bash(adb devices*)",
+      "Bash(adb logcat -d*)",
+      "Bash(adb logcat -c*)",
+      "Bash(adb shell uiautomator dump*)",
+      "Bash(adb pull /sdcard/ui.xml*)",
+      "Bash(adb shell pm list packages*)",
+      "Bash(xcrun simctl list*)",
+      "Bash(git log*)",
+      "Bash(git rev-parse*)",
+      "Bash(git -C * log*)",
+      "Bash(git -C * rev-parse*)",
+      "Bash(git -C * status --porcelain*)",
+      "Bash(git -C * diff --stat*)"
+    ],
+    "deny": [
+      "Bash(git push --force*)",
+      "Bash(git push -f*)",
+      "Bash(git push * --force*)",
+      "Bash(git push * -f*)",
+      "Bash(rm -rf /*)",
+      "Bash(rm -rf ~*)",
+      "Bash(rm -rf .)",
+      "Bash(rm -rf ./)",
+      "Bash(git reset --hard origin/*)",
+      "Bash(git reset --hard upstream/*)",
+      "Bash(git commit --no-verify*)",
+      "Bash(git push --no-verify*)",
+      "Bash(git commit * --no-verify*)",
+      "Bash(git push * --no-verify*)",
+      "Bash(psql * DROP DATABASE*)",
+      "Bash(psql * TRUNCATE*)",
+      "Bash(mysql * DROP DATABASE*)",
+      "Bash(mysql * TRUNCATE*)",
+      "Write(.env)",
+      "Write(**/.env)",
+      "Edit(.env)",
+      "Edit(**/.env)",
+      "Write(.env.local)",
+      "Write(**/.env.local)",
+      "Edit(.env.local)",
+      "Edit(**/.env.local)",
+      "Write(.env.dev)",
+      "Write(**/.env.dev)",
+      "Edit(.env.dev)",
+      "Edit(**/.env.dev)",
+      "Write(.env.qa)",
+      "Write(**/.env.qa)",
+      "Edit(.env.qa)",
+      "Edit(**/.env.qa)",
+      "Write(.env.uat)",
+      "Write(**/.env.uat)",
+      "Edit(.env.uat)",
+      "Edit(**/.env.uat)",
+      "Write(.env.staging)",
+      "Write(**/.env.staging)",
+      "Edit(.env.staging)",
+      "Edit(**/.env.staging)",
+      "Write(.env.prod)",
+      "Write(**/.env.prod)",
+      "Edit(.env.prod)",
+      "Edit(**/.env.prod)",
+      "Write(.env.production)",
+      "Write(**/.env.production)",
+      "Edit(.env.production)",
+      "Edit(**/.env.production)"
+    ],
+    "ask": [
+      "Bash(npm run test:security*)",
+      "Bash(npm run test:perf*)",
+      "Bash(bash qa/scripts/security/zap-baseline.sh*)",
+      "Bash(bash .stlc/scripts/security/zap-baseline.sh*)",
+      "Bash(bash qa/scripts/performance/run-k6.sh*)",
+      "Bash(bash .stlc/scripts/performance/run-k6.sh*)",
+      "Bash(k6 run*)",
+      "Bash(zap*)",
+      "Bash(adb install*)",
+      "Bash(adb uninstall*)",
+      "Bash(adb shell pm clear*)",
+      "Bash(adb shell pm grant*)",
+      "Bash(adb shell pm revoke*)",
+      "Bash(adb shell svc*)",
+      "Bash(adb shell cmd connectivity*)",
+      "Bash(az boards*)",
+      "Bash(jira*)",
+      "WebFetch"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "for r in \"${QA_ROOT:-.stlc}\" .stlc qa; do if [ -f \"$r/scripts/shared/bash-guard.mjs\" ]; then node \"$r/scripts/shared/bash-guard.mjs\"; exit $?; fi; done",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "for r in \"${QA_ROOT:-.stlc}\" .stlc qa; do if [ -f \"$r/scripts/shared/lint-on-write.mjs\" ]; then node \"$r/scripts/shared/lint-on-write.mjs\"; break; fi; done",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "for r in \"${QA_ROOT:-.stlc}\" .stlc qa; do if [ -f \"$r/scripts/shared/build-state.mjs\" ]; then node \"$r/scripts/shared/build-state.mjs\" --quiet; break; fi; done",
+            "timeout": 20
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "for r in \"${QA_ROOT:-.stlc}\" .stlc qa; do if [ -f \"$r/scripts/shared/status.mjs\" ]; then node \"$r/scripts/shared/status.mjs\" --brief; break; fi; done",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "for r in \"${QA_ROOT:-.stlc}\" .stlc qa; do if [ -f \"$r/scripts/shared/learnings.mjs\" ]; then node \"$r/scripts/shared/learnings.mjs\" brief --root \"$r\" || true; break; fi; done",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "command -v recall >/dev/null 2>&1 && recall context || true",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v recall >/dev/null 2>&1 && recall session end || true",
+            "timeout": 20
+          }
+        ]
+      }
+    ]
+  }
+}

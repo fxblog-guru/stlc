@@ -1,0 +1,18 @@
+# network.yaml — put the device offline or back online (the twin of Network.goOffline/goOnline).
+# Inputs (env): STATE — `offline` or `online`.
+# Android: airplane mode. iOS simulators have no airplane mode, so the step is a labelled skip that
+# the evidence shows; the case's ## Device profile must say how iOS covers it (a real device, or a
+# network-link profile on the runner host), never a silent pass.
+appId: ${APP_ID}
+---
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - setAirplaneMode: ${STATE == 'offline' ? 'enabled' : 'disabled'}
+- runFlow:
+    when:
+      platform: iOS
+    label: "SKIPPED on iOS: no airplane mode on a simulator — see the case's ## Device profile"
+    commands:
+      - takeScreenshot: ios-network-${STATE}-not-applied

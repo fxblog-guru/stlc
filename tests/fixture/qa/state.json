@@ -1,0 +1,219 @@
+{
+  "schema": 1,
+  "generator_version": "2.5.0",
+  "generated_at": "2026-10-27T01:23:09Z",
+  "source_hash": "a981b375b087a3f6dbcce783c3c35f461cf694261e3703199c9f661ef544057b",
+  "project": "fixture",
+  "types_enabled": null,
+  "environments": [
+    {
+      "env": "uat",
+      "run_id": "2026-09-10-0900",
+      "path": "qa/runs/env-checks/uat/2026-09-10-0900/readiness.md",
+      "verdicts": {
+        "api": "READY",
+        "e2e": "READY",
+        "performance": "BLOCKED"
+      },
+      "stale": false,
+      "changed": []
+    }
+  ],
+  "slugs": [
+    {
+      "slug": "orders",
+      "title": "orders",
+      "phase": "Report",
+      "analysis": "qa/analysis/orders/2026-09-01-analysis.md",
+      "plan": "qa/plans/orders/2026-09-01-test-plan.md",
+      "report": {
+        "date": "2026-09-11",
+        "path": "qa/reports/orders/2026-09-11-report.md",
+        "overall": "fail",
+        "shipped_sha": "8556e8f",
+        "runs": [
+          "2026-09-10-1000",
+          "2026-09-10-1005",
+          "2026-09-10-1010",
+          "2026-09-10-1030"
+        ],
+        "gates": [
+          {
+            "gate": "Functional",
+            "target": "0 failing P0/P1",
+            "actual": "1 failing (TC-A11Y-ORDERS-001, P1); quarantined: 1 — TC-E2E-ORDERS-001 ❌ until 2026-09-30",
+            "verdict": "fail"
+          },
+          {
+            "gate": "Case coverage",
+            "target": "every REQ ≥1 case per applicable type",
+            "actual": "REQ-003 security, REQ-004 performance designed, not run",
+            "verdict": "pass"
+          },
+          {
+            "gate": "Performance",
+            "target": "p95 ≤ 500 ms, errors < 1%",
+            "actual": "—",
+            "verdict": "not evaluable"
+          },
+          {
+            "gate": "Security",
+            "target": "0 unresolved High/Critical",
+            "actual": "—",
+            "verdict": "not evaluable"
+          },
+          {
+            "gate": "Unit",
+            "target": "0 failing; branch ≥ 80%, line ≥ 90%",
+            "actual": "0 failing; branch 84%, line 92%",
+            "verdict": "pass"
+          },
+          {
+            "gate": "Accessibility",
+            "target": "0 unresolved Critical/High",
+            "actual": "1 High open (A11Y-F-001)",
+            "verdict": "fail"
+          },
+          {
+            "gate": "Quarantine",
+            "target": "no expired-unreleased rows",
+            "actual": "1 unreleased (TC-E2E-ORDERS-001 until 2026-09-30)",
+            "verdict": "pass"
+          }
+        ],
+        "stale": true,
+        "newer_runs": [
+          "2026-09-10-1040"
+        ]
+      },
+      "review": {
+        "date": "2026-09-05",
+        "verdict": "REVISE FIRST",
+        "path": "qa/reviews/orders/2026-09-05-case-review.md",
+        "reviewed": 1,
+        "stale": false,
+        "changed": []
+      },
+      "defects": {
+        "total_open": 2,
+        "by_severity": {
+          "Critical": 0,
+          "High": 2,
+          "Medium": 0,
+          "Low": 0
+        },
+        "items": [
+          {
+            "id": "DEF-orders-001",
+            "severity": "High",
+            "origin": "INTERNAL",
+            "title": "Order list renders blank after create",
+            "path": "qa/defects/orders/DEF-orders-001-order-list-blank.md"
+          },
+          {
+            "id": "DEF-orders-003",
+            "severity": "High",
+            "origin": "ESCAPED",
+            "title": "Discount lost on orders with 2 currencies (production)",
+            "path": "qa/defects/orders/DEF-orders-003-discount-lost-prod.md"
+          }
+        ]
+      },
+      "quarantine": {
+        "active": 1,
+        "expired": 0,
+        "nearest_expiry": "2026-09-30",
+        "items": [
+          {
+            "case_id": "TC-E2E-ORDERS-001",
+            "since": "2026-09-10",
+            "until": "2026-09-30",
+            "reason": "list virtualisation renders late on CI",
+            "ticket": "PROJ-1001",
+            "expired": false
+          }
+        ]
+      },
+      "signoff": {
+        "release": "2026-09",
+        "date": "2026-09-12",
+        "recommendation": "NO-GO",
+        "path": "qa/reports/release/2026-09/2026-09-12-signoff.md",
+        "conditions": []
+      },
+      "traceability": {
+        "total_cases": 11,
+        "scripted": 7,
+        "last_run_pass": 2,
+        "last_run_fail": 2,
+        "blocked": 1,
+        "not_run": 6
+      },
+      "types": {
+        "api": {
+          "cases": 1,
+          "scripted": 1,
+          "pass": 1,
+          "fail": 0,
+          "blocked": 0
+        },
+        "integration": {
+          "cases": 1,
+          "scripted": 0,
+          "pass": 0,
+          "fail": 0,
+          "blocked": 0
+        },
+        "e2e": {
+          "cases": 1,
+          "scripted": 1,
+          "pass": 0,
+          "fail": 1,
+          "blocked": 0
+        },
+        "security": {
+          "cases": 1,
+          "scripted": 0,
+          "pass": 0,
+          "fail": 0,
+          "blocked": 0
+        },
+        "performance": {
+          "cases": 1,
+          "scripted": 0,
+          "pass": 0,
+          "fail": 0,
+          "blocked": 0
+        },
+        "unit": {
+          "cases": 1,
+          "scripted": 1,
+          "pass": 1,
+          "fail": 0,
+          "blocked": 0
+        },
+        "accessibility": {
+          "cases": 2,
+          "scripted": 1,
+          "pass": 0,
+          "fail": 1,
+          "blocked": 0
+        },
+        "mobile": {
+          "cases": 2,
+          "scripted": 2,
+          "pass": 0,
+          "fail": 0,
+          "blocked": 1
+        },
+        "data": {
+          "cases": 1,
+          "scripted": 1,
+          "pass": 0,
+          "fail": 0,
+          "blocked": 0
+        }
+      }
+    }
+  ]
+}

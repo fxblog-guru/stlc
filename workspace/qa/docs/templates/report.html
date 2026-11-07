@@ -1,0 +1,114 @@
+<!-- Optional HTML shell for /qa-report (reporting-results skill). Fill {{PLACEHOLDER}}s and
+     duplicate <!-- REPEAT --> rows; never restyle. Neutral light/dark-aware theme. Sections map
+     1:1 to the .md report: summary · by type · gates · perf SLOs · security · accessibility ·
+     unit coverage & handoff · quarantined & manual · exploratory · failure digest · trend · gaps. -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{PROJECT}} — QA report · {{SLUG}}</title>
+<style>
+  :root{--bg:#f7f8fa;--surface:#fff;--ink:#1c2733;--muted:#5b6b7b;--line:#e3e8ee;
+    --ok:#188653;--ok-soft:#e6f4ec;--fail:#c0392b;--fail-soft:#fdecea;--warn:#b45309;--warn-soft:#fdf3e3;--pri:#2563eb;--pri-soft:#eaf1fe;--radius:10px;}
+  @media(prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#0f141a;--surface:#161d26;--ink:#e6edf3;--muted:#9fb0c0;--line:#2a343f;--ok-soft:#123024;--fail-soft:#3a1714;--warn-soft:#3a2a12;--pri-soft:#12233f;}}
+  *{box-sizing:border-box}body{margin:0;font:15px/1.55 -apple-system,"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:var(--ink)}
+  header{background:var(--surface);border-bottom:1px solid var(--line);padding:14px 32px}
+  main{max-width:960px;margin:0 auto;padding:28px 20px 64px}
+  section{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:22px 26px;margin-bottom:22px}
+  h1{margin:0;font-size:22px}h2{margin:0 0 12px;font-size:18px}
+  .stats{display:flex;gap:14px;flex-wrap:wrap;margin-top:14px}
+  .stat{flex:1 1 130px;background:var(--pri-soft);border-radius:var(--radius);padding:12px 16px}
+  .stat b{display:block;font-size:22px}.stat span{font-size:13px;color:var(--muted)}
+  .tablewrap{overflow-x:auto}table{border-collapse:collapse;width:100%;font-size:14px}th,td{border:1px solid var(--line);padding:7px 10px;text-align:left}th{background:var(--pri-soft)}
+  .gate{padding:3px 10px;border-radius:999px;font-size:13px;font-weight:600}
+  .gate.pass{background:var(--ok-soft);color:var(--ok)}.gate.fail{background:var(--fail-soft);color:var(--fail)}.gate.na{background:var(--warn-soft);color:var(--warn)}
+  .badge{padding:2px 9px;border-radius:6px;font-size:12.5px}
+  .pass{color:var(--ok)}.fail{color:var(--fail)}.blocked{color:var(--warn)}.muted{color:var(--muted)}
+</style></head>
+<body>
+<header><h1>{{PROJECT}} — QA report</h1><div class="muted">{{SLUG}} · {{DATE}} · env {{ENV}}</div></header>
+<main>
+  <section>
+    <h2>Executive summary</h2>
+    <p>{{EXEC_SUMMARY}}</p>
+    <p><b>Overall gate:</b> <span class="gate {{OVERALL_CLASS}}">{{OVERALL_VERDICT}}</span></p>
+  </section>
+  <section>
+    <h2>Summary</h2>
+    <div class="stats">
+      <div class="stat"><b>{{CASES_TOTAL}}</b><span>cases designed</span></div>
+      <div class="stat"><b>{{SCRIPTED_PCT}}%</b><span>scripted ({{MANUAL}} manual)</span></div>
+      <div class="stat"><b class="pass">{{PASS}}</b><span>passing</span></div>
+      <div class="stat"><b class="fail">{{FAIL}}</b><span>failing ({{QUARANTINED_FAIL}} quarantined)</span></div>
+      <div class="stat"><b class="blocked">{{BLOCKED}}</b><span>blocked</span></div>
+    </div>
+  </section>
+  <section>
+    <h2>By type</h2>
+    <div class="tablewrap"><table><tr><th>Type</th><th>Designed</th><th>Scripted</th><th>Manual</th><th>Pass</th><th>Fail</th><th>Blocked</th><th>Not run</th></tr>
+    <!-- REPEAT per enabled type (unit · api · integration · e2e · security · performance · accessibility) --><tr><td>{{TYPE}}</td><td>{{D}}</td><td>{{S}}</td><td>{{M}}</td><td class="pass">{{P}}</td><td class="fail">{{F}}</td><td class="blocked">{{B}}</td><td class="muted">{{NR}}</td></tr>
+    </table></div>
+  </section>
+  <section>
+    <h2>Quality gates</h2>
+    <div class="tablewrap"><table><tr><th>Gate</th><th>Target</th><th>Actual</th><th>Verdict</th><th>Evidence</th></tr>
+    <!-- REPEAT per gate (CONTRACTS §16 columns); class ∈ pass | fail | na (not evaluable) --><tr><td>{{GATE}}</td><td>{{TARGET}}</td><td>{{ACTUAL}}</td><td><span class="gate {{GATE_CLASS}}">{{GATE_VERDICT}}</span></td><td class="muted">{{EVIDENCE}}</td></tr>
+    </table></div>
+  </section>
+  <section>
+    <h2>Performance SLOs</h2>
+    <div class="tablewrap"><table><tr><th>Transaction</th><th>p95 target</th><th>p95 actual</th><th>Error rate</th><th>Verdict</th></tr>
+    <!-- REPEAT; if performance disabled or not run, replace this table with a plain note --><tr><td>{{TXN}}</td><td>{{P95_T}}</td><td>{{P95_A}}</td><td>{{ERR}}</td><td><span class="gate {{PERF_CLASS}}">{{PERF_VERDICT}}</span></td></tr>
+    </table></div>
+  </section>
+  <section>
+    <h2>Security findings</h2>
+    <div class="tablewrap"><table><tr><th>ID</th><th>Severity</th><th>Finding</th><th>Affected REQ</th><th>Case</th><th>Status</th></tr>
+    <!-- REPEAT from findings.md; if none, replace with "No unresolved High/Critical findings." --><tr><td>{{FID}}</td><td>{{SEV}}</td><td>{{FINDING}}</td><td>{{REQ}}</td><td>{{CASE}}</td><td>{{STATUS}}</td></tr>
+    </table></div>
+  </section>
+  <section>
+    <h2>Accessibility findings ({{A11Y_STANDARD}})</h2>
+    <div class="tablewrap"><table><tr><th>ID</th><th>Severity</th><th>Rule / WCAG SC</th><th>Screen / element</th><th>Case</th><th>Status</th></tr>
+    <!-- REPEAT from the accessibility run's findings.md; if the type is disabled or not run, replace with a plain note --><tr><td>{{AID}}</td><td>{{ASEV}}</td><td>{{ARULE}}</td><td>{{AWHERE}}</td><td>{{ACASE}}</td><td>{{ASTATUS}}</td></tr>
+    </table></div>
+  </section>
+  <section>
+    <h2>Unit coverage &amp; handoff</h2>
+    <div class="tablewrap"><table><tr><th>Module</th><th>Files</th><th>Line %</th><th>Branch %</th><th>Target</th><th>Verdict</th></tr>
+    <!-- REPEAT verbatim from coverage-summary.md; no unit run → "Unit coverage: not evaluable" --><tr><td>{{UMOD}}</td><td>{{UFILES}}</td><td>{{ULINE}}</td><td>{{UBRANCH}}</td><td>{{UTARGET}}</td><td><span class="gate {{UCLASS}}">{{UVERDICT}}</span></td></tr>
+    </table></div>
+    <p class="muted">HANDOFF: {{HANDOFF_PROPOSED}} proposed (oldest {{HANDOFF_OLDEST_RUNS}} runs) · {{HANDOFF_APPLIED}} applied · {{HANDOFF_MERGED}} merged · {{HANDOFF_REJECTED}} rejected</p>
+  </section>
+  <section>
+    <h2>Quarantined &amp; manual</h2>
+    <div class="tablewrap"><table><tr><th>Case</th><th>Priority</th><th>Since</th><th>Until</th><th>Reason</th><th>Ticket</th><th>Last status</th></tr>
+    <!-- REPEAT per unreleased quarantine row touching this feature; none → "No quarantined cases." --><tr><td>{{QCASE}}</td><td>{{QPRI}}</td><td>{{QSINCE}}</td><td>{{QUNTIL}}</td><td>{{QREASON}}</td><td>{{QTICKET}}</td><td>{{QSTATUS}}</td></tr>
+    </table></div>
+    <p class="muted">Manual cases (designed, never scripted by design): {{MANUAL_LIST}}</p>
+  </section>
+  <section>
+    <h2>Exploratory sessions</h2>
+    <div class="tablewrap"><table><tr><th>Session</th><th>Charter</th><th>Date</th><th>Bugs</th><th>Candidates</th><th>Follow-ups</th><th>Debriefed</th></tr>
+    <!-- REPEAT per <qa-root>/exploratory/<slug>/XS-*.md; none → "No exploratory sessions recorded." --><tr><td>{{XS}}</td><td>{{XCHARTER}}</td><td>{{XDATE}}</td><td>{{XBUGS}}</td><td>{{XCAND}}</td><td>{{XFU}}</td><td>{{XDEBRIEF}}</td></tr>
+    </table></div>
+  </section>
+  <section>
+    <h2>Failure digest</h2>
+    <div class="tablewrap"><table><tr><th>Case</th><th>Class</th><th>Error (one line)</th><th>Defect</th><th>Next step</th></tr>
+    <!-- REPEAT per ❌ row; class ∈ FUNCTIONAL/SCRIPT/SETUP-ENV/FLAKY; Defect = @defect id + file Status, or —; if none, replace with "No failures." --><tr><td>{{CASE}}</td><td>{{CLASS}}</td><td>{{ERROR}}</td><td>{{DEFECT}}</td><td>{{NEXT_STEP}}</td></tr>
+    </table></div>
+  </section>
+  <section>
+    <h2>Trend</h2>
+    <!-- If no previous report, replace with "First report — no trend." -->
+    <p>{{TREND_SUMMARY}}</p>
+  </section>
+  <section>
+    <h2>Gaps &amp; recommendations</h2>
+    <ul>
+    <!-- REPEAT per gap --><li>{{GAP}}</li>
+    </ul>
+  </section>
+</main></body></html>

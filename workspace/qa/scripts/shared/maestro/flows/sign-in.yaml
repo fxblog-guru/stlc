@@ -1,0 +1,20 @@
+# sign-in.yaml — sign in as a test actor through the UI (the twin of as(actor) / pageAs(actor)).
+# Inputs (env): ACTOR — the role whose credentials the runner passed (`standard` → TEST_USER /
+# TEST_PASSWORD; another role → TEST_USER_<ROLE> / TEST_PASSWORD_<ROLE>). Values never sit in a flow.
+# Arrival: the home screen id, so a wrong password fails here and not three steps later.
+appId: ${APP_ID}
+---
+- runScript: ../scripts/actor.js
+- tapOn:
+    id: ${output.auth.username}
+- inputText: ${output.actor.user}
+- tapOn:
+    id: ${output.auth.password}
+- inputText: ${output.actor.password}
+- hideKeyboard
+- tapOn:
+    id: ${output.auth.submit}
+- extendedWaitUntil:
+    visible:
+      id: ${output.app.home}
+    timeout: ${output.T.screen}

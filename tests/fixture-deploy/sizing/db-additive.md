@@ -1,0 +1,4 @@
+- deploy_impact: db
+- db_change: additive
+- data_change: none
+- rollback: redeploy, snapshot-restore

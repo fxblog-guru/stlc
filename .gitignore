@@ -1,0 +1,24 @@
+# Dependencies
+node_modules/
+workspace/qa/node_modules/
+
+# Python bytecode (the wiki converter)
+__pycache__/
+*.pyc
+
+# Build output
+out/
+dist/
+*.vsix
+.vscode-test/
+
+# Generated / local
+workspace/qa/.env.*
+!workspace/qa/.env.example
+workspace/qa/runs/_adhoc/
+workspace/qa/state.json
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+*.log

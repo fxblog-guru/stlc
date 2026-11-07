@@ -1,0 +1,6 @@
+- deploy_impact: db
+- db_change: expand
+- data_change: backfill, type-change
+- rollback: redeploy, snapshot-restore
+- backup: orders-pre-0042 (nightly snapshot, taken before migrate)
+- post_backup_writes: replay — orders written after the snapshot are replayed from the outbox

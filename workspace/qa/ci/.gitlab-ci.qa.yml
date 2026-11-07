@@ -1,0 +1,466 @@
+# .gitlab-ci.qa.yml — CI template for a project's .stlc/ workspace (agentic-fx-qa).
+# Include from the project's .gitlab-ci.yml:
+#   include: [{ local: '.stlc/ci/.gitlab-ci.qa.yml' }]
+# Same jobs, same semantics as .stlc/ci/github-qa.yml — .stlc/ci/README.md has the table for both.
+#
+# Secrets (BASE_URL, API_BASE_URL, TEST_USER*, TEST_PASSWORD*, TEST_POOL_*, AUTH_*, API_TOKEN,
+# DB_CONNECTION…) come from Settings → CI/CD → Variables (masked + protected); .stlc/.env.<env> is
+# never committed. Every Playwright job writes .stlc/.env.$QA_ENV from them with .stlc/ci/write-env.mjs,
+# which prints key NAMES only, never values.
+#
+# MR pipeline:  lint → smoke (@smoke minus @quarantined) → changed (--only-changed=<MR base>)
+# Nightly:      regression sharded ×4 (blob reports) → merge (one HTML + junit.xml) · shuffle ·
+#               quarantined (never blocks) · accessibility · unit-coverage
+# Manual:       performance / security — only on environments PROJECT-PROFILE §Environments
+#               authorizes; a pipeline trigger cannot authorize an env, the person who clicks does.
+#               ui baselines (qa:ui-baselines, in the Linux image) · desktop (qa:desktop, a
+#               `desktop-runner`) · mobile (qa:mobile, a `mobile-runner`) — CONTRACTS §20.
+# Run plan:     Run pipeline → RUN_PLAN=<name> [QA_ENV=<env>] (or a schedule that sets RUN_PLAN):
+#               qa:plan:generate writes a child pipeline sharded by the plan's `shards:`, and
+#               qa:plan runs it — blob reports per shard, one merged report (CONTRACTS §19).
+# Smoke and nightly regression run the `smoke` / `regression` run plans when .stlc/run-plans/ has them
+# (the same definition /qa-run --plan runs locally), the tag grep otherwise.
+#
+# Evidence: every job uploads .stlc/runs/** (junit for the MR test widget) — the folder /qa-report reads.
+#
+# QA root (CONTRACTS §2): written for `.stlc/`, the default. A project on `qa/` runs
+# `node qa/scripts/shared/migrate-root.mjs --to qa --write` (it rewrites this file). The root is
+# spelled out, not a variable: cache:key:files, rules:changes and trigger:include take no variables.
+
+variables:
+  # Report hub (PROJECT-PROFILE §Test management). Leave VERDICT_URL unset and the upload is
+  # skipped with the command printed — it never fails a job.
+  VERDICT_URL: ""
+  VERDICT_PROJECT: ""
+  # VERDICT_API_KEY belongs in a masked CI variable, never here.
+  QA_ENV: uat
+  # Platform matrix (PROJECT-PROFILE §Platforms, CONTRACTS §20): which platforms the Playwright jobs
+  # run (web · api here; windows/macos need the desktop runner below; android/ios the mobile one),
+  # and the web targets. Override per schedule (PW_PROJECTS=chromium,firefox,webkit nightly).
+  PW_PLATFORMS: web,api
+  PW_PROJECTS: chromium
+  # Run pipeline → RUN_PLAN=<name> runs .stlc/run-plans/<name>.md (and nothing else nightly).
+  RUN_PLAN: ""
+  # Same version as @playwright/test in .stlc/package.json (tests/bundle.test.mjs keeps them equal):
+  # the image's browsers are built for exactly that runner version.
+  PLAYWRIGHT_IMAGE: mcr.microsoft.com/playwright:v1.64.0-noble
+  npm_config_cache: $CI_PROJECT_DIR/.stlc/.npm
+
+stages: [lint, smoke, changed, regression, report, accessibility, unit-coverage, nonfunctional, plan]
+
+# ---------------------------------------------------------------------------------------------
+# Templates
+# ---------------------------------------------------------------------------------------------
+.qa-node:
+  image: node:22
+  cache:
+    key: { files: [.stlc/package-lock.json, .stlc/package.json] }
+    paths: [.stlc/.npm/]
+  before_script:
+    - cd .stlc
+    # The lockfile is the contract when the project commits one; without it, install from package.json.
+    - if [ -f package-lock.json ]; then npm ci --prefer-offline --no-audit --no-fund; else npm install --no-audit --no-fund; fi
+
+.qa-playwright:
+  extends: .qa-node
+  image: $PLAYWRIGHT_IMAGE
+  variables:
+    # One identity per job: entity names are qa-<QA_RUN_ID>-w<worker>-…, so jobs that run at the
+    # same time against one environment never collide and the sweeper can find what a job left.
+    QA_RUN_ID: $CI_PIPELINE_ID-$CI_JOB_ID
+    RUN_DIR: runs/ci/$CI_PIPELINE_ID-$CI_JOB_ID
+  before_script:
+    - !reference [.qa-node, before_script]
+    - node ci/write-env.mjs        # .stlc/.env.$QA_ENV from CI variables — key names only in the log
+  artifacts:
+    when: always
+    paths: [.stlc/runs/]
+    reports:
+      junit: .stlc/runs/**/junit.xml
+    expire_in: 14 days
+
+.mr-and-default:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+.nightly:
+  rules:
+    - if: $RUN_PLAN
+      when: never
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_PIPELINE_SOURCE == "web"
+      when: manual
+
+# ---------------------------------------------------------------------------------------------
+# MR / push
+# ---------------------------------------------------------------------------------------------
+qa:lint:
+  stage: lint
+  extends: .qa-node
+  script:
+    - npm run qa:lint          # CONTRACTS.md mechanical checks (traceability, ids, tags, quarantine expiry, defect lifecycle…)
+    - npm run typecheck        # shared layer + every generated spec compiles
+    - npm run lint             # eslint: no sleeps / skip / only / conditionals / missing asserts
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH
+
+qa:pr-scan:
+  # The mechanical half of /qa-review-pr (CONTRACTS §21): lost assertions, skips, scripts with no
+  # case, duplicate Case IDs, hand-written quarantine tags, a loosened runner, kit edits, secrets.
+  # Fails on High only; everything else is in the log for the human reviewer. No install needed.
+  stage: lint
+  image: node:22
+  variables:
+    GIT_DEPTH: 0
+  script:
+    - node .stlc/scripts/shared/pr-scan.mjs --base "$CI_MERGE_REQUEST_DIFF_BASE_SHA" --head "$CI_COMMIT_SHA" --fail-on High
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+
+qa:smoke:
+  stage: smoke
+  extends: [.qa-playwright, .mr-and-default]
+  variables:
+    QA_RUN_ID: $CI_PIPELINE_ID-smoke
+    RUN_DIR: runs/ci/$CI_PIPELINE_ID-smoke
+  script:
+    # The `smoke` run plan when it exists (the definition /qa-run --plan smoke runs locally), else the tag grep.
+    - if [ -f run-plans/smoke.md ]; then node scripts/shared/run-plan.mjs run smoke --env "$QA_ENV" --run-dir "$RUN_DIR" --no-writeback -- --fail-on-flaky-tests; else npm run test:smoke -- --fail-on-flaky-tests; fi     # @smoke minus @quarantined, budget ≤ 10 min
+  after_script:
+    # Reporting is not the run: a green suite never turns red because the hub was unreachable.
+    - cd .stlc && node scripts/shared/verdict-upload.mjs --run "$RUN_DIR" --type e2e --slug ci --env "$QA_ENV" --tag smoke || true
+
+qa:changed:
+  # Runs every spec that changed in this MR, or imports a file that changed, against the MR base —
+  # a page object edit re-runs the specs that use it. Needs the base commit: full clone + fetch.
+  stage: changed
+  extends: .qa-playwright
+  variables:
+    GIT_DEPTH: "0"
+    QA_RUN_ID: $CI_PIPELINE_ID-changed
+    RUN_DIR: runs/ci/$CI_PIPELINE_ID-changed
+  script:
+    - command -v git >/dev/null || { apt-get update -qq && apt-get install -y -qq --no-install-recommends git; }
+    - git config --global --add safe.directory "$CI_PROJECT_DIR"
+    - git fetch --no-tags origin "$CI_MERGE_REQUEST_TARGET_BRANCH_NAME"
+    - BASE="${CI_MERGE_REQUEST_DIFF_BASE_SHA:-origin/$CI_MERGE_REQUEST_TARGET_BRANCH_NAME}"
+    - echo "only-changed against $BASE"
+    - npx playwright test scripts/e2e scripts/api scripts/integration scripts/accessibility --only-changed="$BASE" --grep-invert @quarantined --pass-with-no-tests --fail-on-flaky-tests
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+
+# ---------------------------------------------------------------------------------------------
+# Nightly
+# ---------------------------------------------------------------------------------------------
+qa:regression:
+  # Sharded by TEST (fullyParallel), so shards balance by test count. Each shard writes a blob
+  # report; qa:report merges them into one HTML + junit.xml. `parallel` takes a literal — change
+  # both here and nothing else (CI_NODE_TOTAL follows it).
+  stage: regression
+  extends: [.qa-playwright, .nightly]
+  parallel: 4
+  variables:
+    PW_BLOB: "1"
+    QA_RUN_ID: $CI_PIPELINE_ID-reg$CI_NODE_INDEX
+    RUN_DIR: runs/ci/$CI_PIPELINE_ID-regression/shard-$CI_NODE_INDEX
+  script:
+    # The `regression` run plan when it exists, else the tag grep — both sharded the same way.
+    - if [ -f run-plans/regression.md ]; then node scripts/shared/run-plan.mjs run regression --env "$QA_ENV" --run-dir "$RUN_DIR" --no-writeback --shard "$CI_NODE_INDEX/$CI_NODE_TOTAL" -- --fail-on-flaky-tests; else npm run test:regression -- --shard="$CI_NODE_INDEX/$CI_NODE_TOTAL" --fail-on-flaky-tests; fi
+  artifacts:
+    when: always
+    paths: [.stlc/runs/]
+    expire_in: 14 days
+
+qa:report:
+  # One report for the whole nightly: the shards' blob reports merged into HTML + junit.xml.
+  stage: report
+  extends: .qa-node
+  image: $PLAYWRIGHT_IMAGE
+  needs: [{ job: "qa:regression", artifacts: true }]
+  variables:
+    RUN_DIR: runs/ci/$CI_PIPELINE_ID-regression
+    PLAYWRIGHT_HTML_OPEN: never
+  script:
+    - mkdir -p "$RUN_DIR/blobs" && cp "$RUN_DIR"/shard-*/blob/*.zip "$RUN_DIR/blobs/"
+    - PLAYWRIGHT_HTML_OUTPUT_DIR="$RUN_DIR/html-report" PLAYWRIGHT_JUNIT_OUTPUT_FILE="$RUN_DIR/junit.xml" npx playwright merge-reports --reporter html,junit "$RUN_DIR/blobs"
+    - test -s "$RUN_DIR/junit.xml"
+  after_script:
+    - cd .stlc && node scripts/shared/verdict-upload.mjs --run "runs/ci/$CI_PIPELINE_ID-regression" --type e2e --slug ci --env "$QA_ENV" --tag regression || true
+  artifacts:
+    when: always
+    paths: [.stlc/runs/]
+    reports:
+      junit: .stlc/runs/ci/$CI_PIPELINE_ID-regression/junit.xml
+    expire_in: 14 days
+  rules:
+    - if: $RUN_PLAN
+      when: never
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: always
+    - if: $CI_PIPELINE_SOURCE == "web"
+      when: always
+
+qa:shuffle:
+  # The same suite in a random order: a test that passes only after another one is a hidden
+  # dependency (shared data, leaked state) — the bug this job exists to surface.
+  stage: regression
+  extends: [.qa-playwright, .nightly]
+  variables:
+    QA_RUN_ID: $CI_PIPELINE_ID-shuffle
+    RUN_DIR: runs/ci/$CI_PIPELINE_ID-shuffle
+  script:
+    - npm run test:regression -- --shuffle --fail-on-flaky-tests
+
+qa:quarantined:
+  # Quarantined cases keep running so /qa-quarantine --release has evidence; failures here never block.
+  stage: regression
+  extends: .qa-playwright
+  allow_failure: true
+  variables:
+    QA_RUN_ID: $CI_PIPELINE_ID-quarantined
+    RUN_DIR: runs/ci/$CI_PIPELINE_ID-quarantined
+  script:
+    - npm run test:quarantined
+  rules:
+    - if: $RUN_PLAN
+      when: never
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+
+qa:accessibility:
+  stage: accessibility
+  extends: .qa-playwright
+  variables:
+    QA_RUN_ID: $CI_PIPELINE_ID-a11y
+    RUN_DIR: runs/ci/$CI_PIPELINE_ID-a11y
+  script:
+    - npm run test:a11y -- --fail-on-flaky-tests
+  rules:
+    - if: $RUN_PLAN
+      when: never
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes: [.stlc/scripts/accessibility/**/*, .stlc/cases/accessibility/**/*]
+
+qa:unit-coverage:
+  # The app repo's CI runs the unit suite and publishes its coverage report as an artifact/URL.
+  # This job only turns that report into coverage-summary.md against PROJECT-PROFILE §Unit testing
+  # thresholds — CI never runs the app's tests from the QA workspace (CONTRACTS §9.6).
+  stage: unit-coverage
+  extends: .qa-node
+  variables:
+    UNIT_REPORT_URL: ""          # set per project: artifact URL of coverage.cobertura.xml / lcov.info
+    UNIT_FORMAT: cobertura
+    UNIT_MODULES: ""
+    UNIT_BRANCH_MIN: "80"
+    UNIT_LINE_MIN: "90"
+  script:
+    - test -n "$UNIT_REPORT_URL" || { echo "UNIT_REPORT_URL not set — unit coverage not evaluable in CI"; exit 0; }
+    - mkdir -p runs/ci/$CI_PIPELINE_ID-unit && curl -fsSL "$UNIT_REPORT_URL" -o runs/ci/$CI_PIPELINE_ID-unit/report
+    - node scripts/unit/coverage-summary.mjs --report runs/ci/$CI_PIPELINE_ID-unit/report --format "$UNIT_FORMAT" --out runs/ci/$CI_PIPELINE_ID-unit/coverage-summary.md ${UNIT_MODULES:+--modules "$UNIT_MODULES"} --branch-min "$UNIT_BRANCH_MIN" --line-min "$UNIT_LINE_MIN"
+    - cat runs/ci/$CI_PIPELINE_ID-unit/coverage-summary.md
+    - '! grep -q "| fail |" runs/ci/$CI_PIPELINE_ID-unit/coverage-summary.md'
+  artifacts:
+    when: always
+    paths: [.stlc/runs/]
+    expire_in: 14 days
+  rules:
+    - if: $RUN_PLAN
+      when: never
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+
+# ---------------------------------------------------------------------------------------------
+# Manual — a human authorizes the environment
+# ---------------------------------------------------------------------------------------------
+qa:performance:
+  # MANUAL by design: load must only hit an environment whose §Environments row says yes.
+  # The k6 image has no Node, so no env file is written: the CI variables are already in the
+  # job's environment, and k6 reads them as __ENV (the script signs in once in setup()).
+  stage: nonfunctional
+  image:
+    name: grafana/k6:latest
+    entrypoint: [""]
+  variables:
+    PERF_SCRIPT: ""
+    QA_RUN_ID: $CI_PIPELINE_ID-perf
+    RUN_DIR: runs/ci/$CI_PIPELINE_ID-perf
+  before_script:
+    - cd .stlc
+  script:
+    - test -n "$PERF_SCRIPT" || { echo "set PERF_SCRIPT to the k6 script path (scripts/performance/<module>/<TC>.js)"; exit 1; }
+    - sh scripts/performance/run-k6.sh "$PERF_SCRIPT"
+  artifacts:
+    when: always
+    paths: [.stlc/runs/]
+    expire_in: 14 days
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "web"
+      when: manual
+
+qa:mobile:
+  # MANUAL / scheduled: needs a runner with emulators or device-farm access and the app build
+  # artifact. Runs the MOBILE FRAMEWORK REPO's own command (PROJECT-PROFILE §Mobile testing) through
+  # the .stlc/ wrapper so evidence lands under .stlc/runs/. Set MOBILE_REPO to the framework checkout path
+  # (a sibling clone in a multi-project pipeline, or a submodule) and MOBILE_APP to the build.
+  stage: nonfunctional
+  extends: .qa-node
+  tags: [mobile-runner]
+  variables:
+    MOBILE_REPO: ""
+    MOBILE_PLATFORM: android
+    MOBILE_CMD: "npm run test:android"
+    MOBILE_TAGS: "@smoke"
+    MOBILE_APP: ""
+  script:
+    - test -n "$MOBILE_REPO" || { echo "MOBILE_REPO not set — point it at the mobile framework checkout"; exit 1; }
+    - RUN_DIR=runs/ci/$CI_PIPELINE_ID-mobile-$MOBILE_PLATFORM npm run test:mobile -- --repo "$MOBILE_REPO" --cmd "$MOBILE_CMD" --platform "$MOBILE_PLATFORM" --tags "$MOBILE_TAGS" ${MOBILE_APP:+--app "$MOBILE_APP"}
+  artifacts:
+    when: always
+    paths: [.stlc/runs/]
+    expire_in: 14 days
+  rules:
+    - if: $RUN_PLAN
+      when: never
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_PIPELINE_SOURCE == "web"
+      when: manual
+
+qa:security:
+  # MANUAL by design (same authorization rule). Docker-in-Docker for the ZAP baseline image.
+  stage: nonfunctional
+  extends: .qa-playwright
+  services: [docker:dind]
+  variables:
+    DOCKER_HOST: tcp://docker:2375
+    QA_RUN_ID: $CI_PIPELINE_ID-security
+    RUN_DIR: runs/ci/$CI_PIPELINE_ID-security
+  script:
+    - npm run test:security
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "web"
+      when: manual
+
+# ---------------------------------------------------------------------------------------------
+# Run plan — Run pipeline → RUN_PLAN=<name> (CONTRACTS §19). Pipeline schedules may set RUN_PLAN
+# too (e.g. a weekly `full`). The plan decides cases, types, browsers and shards; security and
+# performance in it are refused unless PROJECT-PROFILE §Environments authorizes $QA_ENV — the person
+# who sets RUN_PLAN on that env is the one confirming it, as for qa:security / qa:performance.
+# ---------------------------------------------------------------------------------------------
+qa:plan:generate:
+  stage: plan
+  extends: .qa-node
+  script:
+    - node scripts/shared/run-plan.mjs ci-gitlab "$RUN_PLAN" --env "$QA_ENV" --out run-plan-pipeline.yml
+  artifacts:
+    paths: [.stlc/run-plan-pipeline.yml]
+    expire_in: 1 day
+  rules:
+    - if: $RUN_PLAN && ($CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "api")
+
+qa:plan:
+  # The child pipeline: `parallel: <shards>` jobs, each `run-plan.mjs run --shard i/n` with
+  # PW_BLOB=1 (--shard=… inside), then one merge-reports --reporter html,junit job → one summary.md
+  # + junit.xml in runs/ci/<pipeline>-plan-<name>/. QA_RUN_ID: per shard, so shards never collide.
+  stage: plan
+  needs: [qa:plan:generate]
+  trigger:
+    include:
+      - artifact: .stlc/run-plan-pipeline.yml
+        job: qa:plan:generate
+    strategy: depend
+  variables:
+    RUN_PLAN: $RUN_PLAN
+    QA_ENV: $QA_ENV
+    VERDICT_URL: $VERDICT_URL
+    VERDICT_PROJECT: $VERDICT_PROJECT
+  rules:
+    - if: $RUN_PLAN && ($CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "api")
+
+# ---------------------------------------------------------------------------------------------
+# Platforms (CONTRACTS §20) — the ui baselines and the platforms that need their own runner
+# ---------------------------------------------------------------------------------------------
+qa:ui-baselines:
+  # MANUAL: regenerates the `ui` type's visual baselines IN THIS IMAGE (Linux) — the committed set
+  # under .stlc/scripts/ui/__screenshots__/linux/. --update-snapshots=changed rewrites only what
+  # changed; download the artifact, review every PNG and its diff, commit them. Never run it to turn
+  # a red visual run green without that review.
+  stage: plan
+  extends: .qa-playwright
+  variables:
+    QA_RUN_ID: $CI_PIPELINE_ID-ui-baselines
+    RUN_DIR: runs/ci/$CI_PIPELINE_ID-ui-baselines
+  script:
+    - npm run test:ui:update
+  artifacts:
+    when: always
+    paths: [.stlc/runs/, .stlc/scripts/ui/__screenshots__/]
+    expire_in: 14 days
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "web"
+      when: manual
+
+qa:desktop:
+  # MANUAL / scheduled on a runner tagged `desktop-runner` (a Windows or macOS machine with the
+  # desktop build): the Electron platforms run in the `desktop-electron` Playwright project from
+  # ELECTRON_APP_PATH; native apps (runner appium-desktop) run in the desktop automation repo —
+  # staged specs + HANDOFF.md, results via /qa-ingest. Without ELECTRON_APP_PATH the desktop
+  # specs skip with that reason (⛔, never ✅).
+  stage: nonfunctional
+  extends: .qa-node
+  tags: [desktop-runner]
+  variables:
+    PW_PLATFORMS: windows
+    PW_PROJECTS: desktop-electron
+    ELECTRON_APP_PATH: ""
+    QA_RUN_ID: $CI_PIPELINE_ID-desktop
+    RUN_DIR: runs/ci/$CI_PIPELINE_ID-desktop
+  script:
+    - node ci/write-env.mjs
+    - npx playwright test scripts/e2e scripts/accessibility scripts/ui --project setup desktop-electron --fail-on-flaky-tests --pass-with-no-tests
+  artifacts:
+    when: always
+    paths: [.stlc/runs/]
+    expire_in: 14 days
+  rules:
+    - if: $RUN_PLAN
+      when: never
+    - if: $CI_PIPELINE_SOURCE == "web"
+      when: manual
+    - if: $CI_PIPELINE_SOURCE == "schedule" && $QA_DESKTOP == "1"
+
+# ---------------------------------------------------------------------------------------------
+# Autonomous QA run (CONTRACTS §24): design → generate → run → report for one feature, unattended.
+# Run pipeline with QA_SLUG and QA_STARTED_BY (the human turning it on). It works on its own branch,
+# pushes that branch and opens a Draft MR whose description is the run report. It never merges,
+# never files to an outside tracker, and runs security or load tests only where §Environments says
+# `yes`; autonomy.mjs stops each of those. Needs ANTHROPIC_API_KEY and a Developer-scoped GITLAB_TOKEN.
+# ---------------------------------------------------------------------------------------------
+qa:autonomy:
+  extends: .qa-playwright
+  stage: plan
+  timeout: 3h
+  variables:
+    QA_AUTONOMY: full
+    QA_BUDGET_TOKENS: "3000000"
+    QA_BUDGET_MINUTES: "170"
+    GIT_DEPTH: 0
+  rules:
+    - if: $QA_SLUG && ($CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "schedule")
+  script:
+    - test -n "$QA_STARTED_BY" || { echo "set QA_STARTED_BY to the human who turned this on"; exit 2; }
+    - npm install -g @anthropic-ai/claude-code
+    - git config user.name "$QA_STARTED_BY" && git config user.email "${QA_STARTED_EMAIL:-$GITLAB_USER_EMAIL}"
+    - export RUN=$(node -e 'const d=new Date().toISOString();console.log(d.slice(0,10).replace(/-/g,"")+"-"+d.slice(11,19).replace(/:/g,"")+"-"+require("crypto").randomBytes(2).toString("hex"))')
+    - git switch -c "qa-autonomy/$QA_SLUG-$RUN"
+    - node scripts/shared/autonomy.mjs start --run "$RUN" --by "$QA_STARTED_BY" --root .
+    - |
+      claude -p "Run QA for $QA_SLUG end to end on $QA_ENV: /qa-design, /qa-generate, /qa-run, /qa-report, with QA_AUTONOMY=full, run id $RUN and --slug $QA_SLUG on every autonomy.mjs check. Follow qa-phase-protocol references/autonomy.md. Stop at the first hard stop autonomy.mjs reports." \
+        --permission-mode acceptEdits --max-turns 400 \
+        --allowedTools "Read" "Edit" "Write" "Glob" "Grep" "Bash(node scripts/shared/*)" "Bash(npx playwright test *)" "Bash(npm run *)" "Bash(git status*)" "Bash(git diff*)" "Bash(git add *)" "Bash(git commit *)" || echo "the run ended with a stop or an error; the report says which"
+    - node scripts/shared/autonomy.mjs report --run "$RUN" --root .
+    - cd .. && git add -A .stlc && git commit -m "test(qa): autonomous run $QA_SLUG ($RUN)" || true
+    - git push "https://oauth2:${GITLAB_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git" "HEAD:qa-autonomy/$QA_SLUG-$RUN"
+    - >
+      node -e 'const fs=require("fs");fs.writeFileSync("mr.json",JSON.stringify({source_branch:`qa-autonomy/${process.env.QA_SLUG}-${process.env.RUN}`,target_branch:process.env.CI_DEFAULT_BRANCH,title:`Draft: autonomous QA run ${process.env.QA_SLUG} (${process.env.RUN})`,description:fs.readFileSync(`.stlc/runs/${process.env.RUN}/report.md`,"utf8")}))'
+    - curl --fail -sS -X POST -H "PRIVATE-TOKEN: $GITLAB_TOKEN" -H "Content-Type: application/json" --data @mr.json "$CI_API_V4_URL/projects/$CI_PROJECT_ID/merge_requests"

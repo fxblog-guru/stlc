@@ -1,0 +1,15 @@
+# cleanup.yaml — called from every case flow's onFlowComplete, so it runs even when the flow failed.
+# Restores the network (a failed offline step must not leave the device in airplane mode for the
+# next flow), then removes every record the flow registered through scripts/api.js.
+appId: ${APP_ID}
+---
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - setAirplaneMode: disabled
+- runFlow:
+    when:
+      true: ${output.cleanup && output.cleanup.length > 0}
+    commands:
+      - runScript: ../scripts/cleanup.js

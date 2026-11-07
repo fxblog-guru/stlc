@@ -1,0 +1,358 @@
+{
+  "schema": 1,
+  "generator_version": "2.5.0",
+  "generated_at": "2026-10-14T09:00:00Z",
+  "source_hash": "fe74de9369b2e496a88278dcc03075c9e68fd308d1a4302f01a81a14410b0f4a",
+  "project": "Sample Orders App",
+  "types_enabled": [
+    "unit",
+    "api",
+    "integration",
+    "e2e",
+    "security",
+    "accessibility",
+    "mobile"
+  ],
+  "environments": [
+    {
+      "env": "uat",
+      "run_id": "2026-10-12-0800",
+      "path": "qa/runs/env-checks/uat/2026-10-12-0800/readiness.md",
+      "verdicts": {
+        "api": "READY",
+        "e2e": "READY",
+        "accessibility": "READY",
+        "mobile": "NOT READY"
+      },
+      "stale": null,
+      "changed": []
+    }
+  ],
+  "slugs": [
+    {
+      "slug": "invoices",
+      "title": "Invoices",
+      "phase": "Signed-off",
+      "analysis": "qa/analysis/invoices/2026-09-20-analysis.md",
+      "plan": "qa/plans/invoices/2026-09-22-test-plan.md",
+      "report": {
+        "date": "2026-10-09",
+        "path": "qa/reports/invoices/2026-10-09-report.md",
+        "overall": "pass",
+        "shipped_sha": "77ac01d",
+        "runs": [
+          "2026-10-08-1000",
+          "2026-10-08-1100"
+        ],
+        "gates": [
+          {
+            "gate": "Functional",
+            "target": "0 failing P0/P1",
+            "actual": "0 failing",
+            "verdict": "pass"
+          },
+          {
+            "gate": "Case coverage",
+            "target": "every REQ ≥1 case per applicable type",
+            "actual": "all covered",
+            "verdict": "pass"
+          },
+          {
+            "gate": "Unit",
+            "target": "0 failing; branch ≥ 80%",
+            "actual": "branch 86%",
+            "verdict": "pass"
+          },
+          {
+            "gate": "Re-verify set",
+            "target": "every re-verify row ✅ at or after shipped_sha",
+            "actual": "1/1",
+            "verdict": "pass"
+          },
+          {
+            "gate": "Security",
+            "target": "0 unresolved High/Critical",
+            "actual": "—",
+            "verdict": "not evaluable"
+          }
+        ],
+        "stale": false,
+        "newer_runs": []
+      },
+      "review": {
+        "date": "2026-09-25",
+        "verdict": "READY FOR /qa-script",
+        "path": "qa/reviews/invoices/2026-09-25-case-review.md",
+        "reviewed": 0,
+        "stale": null,
+        "changed": []
+      },
+      "defects": {
+        "total_open": 0,
+        "by_severity": {
+          "Critical": 0,
+          "High": 0,
+          "Medium": 0,
+          "Low": 0
+        },
+        "items": []
+      },
+      "quarantine": {
+        "active": 0,
+        "expired": 0,
+        "nearest_expiry": null,
+        "items": []
+      },
+      "signoff": {
+        "release": "2026-10",
+        "date": "2026-10-14",
+        "recommendation": "GO",
+        "path": "qa/reports/release/2026-10/2026-10-14-signoff.md",
+        "conditions": []
+      },
+      "traceability": {
+        "total_cases": 5,
+        "scripted": 5,
+        "last_run_pass": 5,
+        "last_run_fail": 0,
+        "blocked": 0,
+        "not_run": 0
+      },
+      "types": {
+        "api": {
+          "cases": 3,
+          "scripted": 3,
+          "pass": 3,
+          "fail": 0,
+          "blocked": 0
+        },
+        "e2e": {
+          "cases": 1,
+          "scripted": 1,
+          "pass": 1,
+          "fail": 0,
+          "blocked": 0
+        },
+        "unit": {
+          "cases": 1,
+          "scripted": 1,
+          "pass": 1,
+          "fail": 0,
+          "blocked": 0
+        }
+      }
+    },
+    {
+      "slug": "orders",
+      "title": "Orders checkout",
+      "phase": "Run",
+      "analysis": "qa/analysis/orders/2026-09-28-analysis.md",
+      "plan": "qa/plans/orders/2026-10-01-test-plan.md",
+      "report": null,
+      "review": {
+        "date": "2026-10-03",
+        "verdict": "READY FOR /qa-script",
+        "path": "qa/reviews/orders/2026-10-03-case-review.md",
+        "reviewed": 0,
+        "stale": null,
+        "changed": []
+      },
+      "defects": {
+        "total_open": 2,
+        "by_severity": {
+          "Critical": 1,
+          "High": 0,
+          "Medium": 1,
+          "Low": 0
+        },
+        "items": [
+          {
+            "id": "DEF-orders-001",
+            "severity": "Critical",
+            "origin": "INTERNAL",
+            "title": "Order list empty after save",
+            "path": "qa/defects/orders/DEF-orders-001-list-empty-after-save.md"
+          },
+          {
+            "id": "DEF-orders-002",
+            "severity": "Medium",
+            "origin": "ESCAPED",
+            "title": "Rounding differs on orders with three lines (production)",
+            "path": "qa/defects/orders/DEF-orders-002-rounding-in-prod.md"
+          }
+        ]
+      },
+      "quarantine": {
+        "active": 2,
+        "expired": 1,
+        "nearest_expiry": "2026-10-10",
+        "items": [
+          {
+            "case_id": "TC-E2E-ORDERS-002",
+            "since": "2026-10-05",
+            "until": "2026-10-30",
+            "reason": "filter chips render late on CI (timing)",
+            "ticket": "TASK-201",
+            "expired": false
+          },
+          {
+            "case_id": "TC-API-ORDERS-002",
+            "since": "2026-09-20",
+            "until": "2026-10-10",
+            "reason": "shared uat pool exhausted (environment)",
+            "ticket": null,
+            "expired": true
+          }
+        ]
+      },
+      "signoff": null,
+      "traceability": {
+        "total_cases": 12,
+        "scripted": 10,
+        "last_run_pass": 6,
+        "last_run_fail": 2,
+        "blocked": 2,
+        "not_run": 2
+      },
+      "types": {
+        "api": {
+          "cases": 2,
+          "scripted": 2,
+          "pass": 2,
+          "fail": 0,
+          "blocked": 0
+        },
+        "integration": {
+          "cases": 1,
+          "scripted": 1,
+          "pass": 0,
+          "fail": 1,
+          "blocked": 0
+        },
+        "e2e": {
+          "cases": 2,
+          "scripted": 2,
+          "pass": 1,
+          "fail": 1,
+          "blocked": 0
+        },
+        "ui": {
+          "cases": 1,
+          "scripted": 1,
+          "pass": 1,
+          "fail": 0,
+          "blocked": 0
+        },
+        "accessibility": {
+          "cases": 1,
+          "scripted": 1,
+          "pass": 0,
+          "fail": 0,
+          "blocked": 1
+        },
+        "security": {
+          "cases": 1,
+          "scripted": 0,
+          "pass": 0,
+          "fail": 0,
+          "blocked": 0
+        },
+        "mobile": {
+          "cases": 2,
+          "scripted": 2,
+          "pass": 1,
+          "fail": 0,
+          "blocked": 1
+        },
+        "unit": {
+          "cases": 1,
+          "scripted": 1,
+          "pass": 1,
+          "fail": 0,
+          "blocked": 0
+        },
+        "performance": {
+          "cases": 1,
+          "scripted": 0,
+          "pass": 0,
+          "fail": 0,
+          "blocked": 0
+        }
+      }
+    },
+    {
+      "slug": "projects",
+      "title": "Projects board",
+      "phase": "Design",
+      "analysis": "qa/analysis/projects/2026-10-10-analysis.md",
+      "plan": "qa/plans/projects/2026-10-11-test-plan.md",
+      "report": null,
+      "review": {
+        "date": "2026-10-12",
+        "verdict": "READY FOR /qa-script",
+        "path": "qa/reviews/projects/2026-10-12-case-review.md",
+        "reviewed": 1,
+        "stale": true,
+        "changed": [
+          "qa/cases/api/projects/TC-API-PROJECTS-001-x.md"
+        ]
+      },
+      "defects": {
+        "total_open": 1,
+        "by_severity": {
+          "Critical": 0,
+          "High": 0,
+          "Medium": 0,
+          "Low": 1
+        },
+        "items": [
+          {
+            "id": "DEF-projects-001",
+            "severity": "Low",
+            "origin": "EXPLORATORY",
+            "title": "Card flickers while dragging",
+            "path": "qa/defects/projects/DEF-projects-001-card-flicker.md"
+          }
+        ]
+      },
+      "quarantine": {
+        "active": 0,
+        "expired": 0,
+        "nearest_expiry": null,
+        "items": []
+      },
+      "signoff": null,
+      "traceability": {
+        "total_cases": 3,
+        "scripted": 0,
+        "last_run_pass": 0,
+        "last_run_fail": 0,
+        "blocked": 0,
+        "not_run": 3
+      },
+      "types": {
+        "api": {
+          "cases": 1,
+          "scripted": 0,
+          "pass": 0,
+          "fail": 0,
+          "blocked": 0
+        },
+        "e2e": {
+          "cases": 1,
+          "scripted": 0,
+          "pass": 0,
+          "fail": 0,
+          "blocked": 0
+        },
+        "mobile": {
+          "cases": 1,
+          "scripted": 0,
+          "pass": 0,
+          "fail": 0,
+          "blocked": 0
+        }
+      }
+    }
+  ]
+}

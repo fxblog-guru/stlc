@@ -1,0 +1,248 @@
+openapi: 3.1.0
+info:
+  title: demo-app
+  version: 1.0.0
+  description: |
+    The bundle's own demo product (tests/demo-app/server.mjs). Session cookie `session` plus an
+    `X-CSRF-Token` header on every non-GET; the token comes back from sign-in and from GET /me.
+servers:
+  - url: /api
+paths:
+  /sign-in:
+    post:
+      operationId: signIn
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SignInRequest' }
+      responses:
+        '200':
+          description: Signed in; the session cookie is set.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SessionStart' }
+        '401': { $ref: '#/components/responses/Problem' }
+  /me:
+    get:
+      operationId: getMe
+      responses:
+        '200':
+          description: The caller and the session's CSRF token.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SessionStart' }
+        '401': { $ref: '#/components/responses/Problem' }
+  /accounts:
+    get:
+      operationId: findAccount
+      parameters:
+        - { name: email, in: query, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: The account.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Account' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+  /projects:
+    get:
+      operationId: listProjects
+      parameters:
+        - { name: q, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+      responses:
+        '200':
+          description: The projects the caller can see, newest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [items, total]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Project' } }
+                  total: { type: integer, minimum: 0 }
+        '401': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+    post:
+      operationId: createProject
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProjectInput' }
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Project' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+  /projects/{projectId}:
+    parameters:
+      - { name: projectId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: getProject
+      responses:
+        '200':
+          description: The project. Its ETag header is the version to send as If-Match on PATCH.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Project' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+    patch:
+      operationId: updateProject
+      parameters:
+        - { name: If-Match, in: header, schema: { type: string }, description: The ETag from GET; a stale one answers 409. }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProjectPatch' }
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Project' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409':
+          description: The If-Match ETag is stale (someone else saved since), or the new name is taken.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+    delete:
+      operationId: deleteProject
+      responses:
+        '204': { description: Deleted. }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+  /projects/{projectId}/members/{accountId}:
+    parameters:
+      - { name: projectId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: accountId, in: path, required: true, schema: { type: string, format: uuid } }
+    put:
+      operationId: setMember
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role]
+              properties:
+                role: { type: string, enum: [admin, member, viewer] }
+      responses:
+        '200':
+          description: The membership.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [account_id, role]
+                properties:
+                  account_id: { type: string, format: uuid }
+                  role: { type: string, enum: [admin, member, viewer] }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+    delete:
+      operationId: removeMember
+      responses:
+        '204': { description: The account is no longer a member. }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+components:
+  responses:
+    Problem:
+      description: An RFC 9457 problem.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+  schemas:
+    SignInRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string }
+        password: { type: string }
+    Me:
+      type: object
+      additionalProperties: false
+      required: [id, email, name, is_owner]
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string }
+        name: { type: string }
+        is_owner: { type: boolean }
+    SessionStart:
+      type: object
+      additionalProperties: false
+      required: [me, csrf_token]
+      properties:
+        me: { $ref: '#/components/schemas/Me' }
+        csrf_token: { type: string, minLength: 16 }
+    Account:
+      type: object
+      additionalProperties: false
+      required: [id, email, name]
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string }
+        name: { type: string }
+    ProjectInput:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 80 }
+        description: { type: [string, 'null'], maxLength: 500 }
+    ProjectPatch:
+      type: object
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 80 }
+        description: { type: [string, 'null'], maxLength: 500 }
+    Project:
+      type: object
+      additionalProperties: false
+      required: [id, name, description, created_at, my_role, member_count]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: [string, 'null'] }
+        created_at: { type: string, format: date-time }
+        my_role: { type: string, enum: [owner, admin, member, viewer] }
+        member_count: { type: integer, minimum: 0 }
+    Problem:
+      type: object
+      required: [type, title, status, detail]
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        errors:
+          type: array
+          items:
+            type: object
+            required: [field, code]
+            properties:
+              field: { type: string }
+              code: { type: string }

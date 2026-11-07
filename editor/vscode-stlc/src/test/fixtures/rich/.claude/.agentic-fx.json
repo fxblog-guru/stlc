@@ -1,0 +1,9 @@
+{
+  "qa": {
+    "claude": [
+      "agents/case-designer.md"
+    ],
+    "version": "2.0.3",
+    "commit": "4f1c2ab"
+  }
+}

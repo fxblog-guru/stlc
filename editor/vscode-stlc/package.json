@@ -1,0 +1,229 @@
+{
+  "name": "vscode-stlc",
+  "displayName": "Agentic STLC",
+  "description": "Live board for the agentic-fx-qa pipeline: the ten-step test pipeline per feature, a platform × type matrix, run plans, runs and failures, defects, quarantine and sign-off — read from <qa-root>/state.json (.stlc/ or qa/) and the files it is built from.",
+  "version": "0.4.3",
+  "publisher": "agentic-fx",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://gitlab.com/agentic-fx/stlc.git",
+    "directory": "editor/vscode-stlc"
+  },
+  "homepage": "https://gitlab.com/agentic-fx/stlc/-/tree/main/editor/vscode-stlc",
+  "bugs": {
+    "url": "https://gitlab.com/agentic-fx/stlc/-/issues"
+  },
+  "icon": "media/icon.png",
+  "galleryBanner": {
+    "color": "#0f2a2a",
+    "theme": "dark"
+  },
+  "keywords": [
+    "qa",
+    "stlc",
+    "testing",
+    "agentic",
+    "claude",
+    "playwright",
+    "defects",
+    "run plans"
+  ],
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Visualization",
+    "Testing",
+    "Other"
+  ],
+  "activationEvents": [
+    "workspaceContains:**/.stlc/state.json",
+    "workspaceContains:**/.stlc/run-plans/*.md",
+    "workspaceContains:**/qa/state.json",
+    "workspaceContains:**/qa/run-plans/*.md",
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "stlc",
+          "title": "Agentic STLC",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "stlc": [
+        {
+          "type": "webview",
+          "id": "stlc.overview",
+          "name": "Overview"
+        },
+        {
+          "id": "stlc.features",
+          "name": "Features"
+        },
+        {
+          "id": "stlc.defects",
+          "name": "Open defects"
+        },
+        {
+          "id": "stlc.runPlans",
+          "name": "Run plans"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "stlc.openBoard",
+        "title": "STLC: Open Board",
+        "icon": "$(beaker)"
+      },
+      {
+        "command": "stlc.refresh",
+        "title": "STLC: Refresh",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "stlc.selectProject",
+        "title": "STLC: Select Project",
+        "icon": "$(folder-library)"
+      },
+      {
+        "command": "stlc.runPlan",
+        "title": "STLC: Run a Run Plan…",
+        "icon": "$(play)"
+      },
+      {
+        "command": "stlc.dryRunPlan",
+        "title": "STLC: Dry-run a Run Plan…",
+        "icon": "$(debug-alt)"
+      },
+      {
+        "command": "stlc.openTrace",
+        "title": "STLC: Open a Playwright Trace…",
+        "icon": "$(debug-console)"
+      },
+      {
+        "command": "stlc.bundleUpdate",
+        "title": "STLC: Bundle Update…",
+        "icon": "$(arrow-circle-up)"
+      },
+      {
+        "command": "stlc.openArtifact",
+        "title": "STLC: Open Artifact"
+      },
+      {
+        "command": "stlc.openAgents",
+        "title": "STLC: Open Agents",
+        "icon": "$(organization)"
+      }
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "stlc.openArtifact",
+          "when": "false"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "stlc.selectProject",
+          "when": "(view == stlc.overview || view == stlc.features || view == stlc.defects || view == stlc.runPlans) && stlc.multiProject",
+          "group": "navigation@0"
+        },
+        {
+          "command": "stlc.openBoard",
+          "when": "view == stlc.overview || view == stlc.features",
+          "group": "navigation@1"
+        },
+        {
+          "command": "stlc.refresh",
+          "when": "view == stlc.overview || view == stlc.features",
+          "group": "navigation@2"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "stlc.runPlan",
+          "when": "view == stlc.runPlans && viewItem == stlc.runPlan",
+          "group": "inline@1"
+        },
+        {
+          "command": "stlc.dryRunPlan",
+          "when": "view == stlc.runPlans && viewItem == stlc.runPlan",
+          "group": "inline@0"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Agentic STLC",
+      "properties": {
+        "stlc.statePath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the derived state index, relative to the project folder. Empty (default): .stlc/state.json when the project has a .stlc/ root, else qa/state.json — the bundle's own order (CONTRACTS §2). Set it only when PROJECT-PROFILE `QA root` names another folder."
+        },
+        "stlc.backgroundRebuild": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Run the project's `node .stlc/scripts/shared/build-state.mjs` in the background when a run, report, defect, run plan, case or review changes. Off by default: it rewrites `state.json`, as the bundle's Stop hook does. Turn it on when Claude Code runs outside the project folder, where that hook never fires."
+        },
+        "stlc.backgroundRebuildSeconds": {
+          "type": "number",
+          "default": 120,
+          "minimum": 15,
+          "description": "Minimum seconds between two background rebuilds."
+        },
+        "stlc.showStatusBar": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show the active feature, its pipeline step, the last run and its open defects in the status bar."
+        },
+        "stlc.accent": {
+          "type": "string",
+          "enum": [
+            "teal",
+            "green",
+            "theme"
+          ],
+          "enumDescriptions": [
+            "Teal accent (default): tells this board apart from the lavender SDLC board at a glance.",
+            "A green accent.",
+            "Follow the editor theme accent (focus border and buttons)."
+          ],
+          "default": "teal",
+          "description": "Accent colour of the board, the sidebar Overview and the status bar item."
+        }
+      }
+    },
+    "colors": [
+      {
+        "id": "stlc.accentForeground",
+        "description": "Accent text of the STLC status bar item.",
+        "defaults": {
+          "dark": "#5eead4",
+          "light": "#0f766e",
+          "highContrast": "#99f6e4",
+          "highContrastLight": "#0b5f58"
+        }
+      }
+    ]
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "test": "node --test out/test/*.test.js",
+    "icon": "node media/make-icon.mjs",
+    "preview": "tsc -p ./ && node out/test/preview/render.js",
+    "package": "npx --yes @vscode/vsce package --no-dependencies"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/vscode": "^1.90.0",
+    "typescript": "^5.5.0"
+  }
+}

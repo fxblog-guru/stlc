@@ -1,0 +1,3 @@
+# Fixture files are parsed byte-for-byte (front matter, hashes, regexes): keep them LF on every OS.
+tests/fixture/** text eol=lf
+tests/fixture-deploy/** text eol=lf

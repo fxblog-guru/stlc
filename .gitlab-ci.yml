@@ -1,0 +1,48 @@
+# CI for the agentic-fx-qa bundle itself (not for projects that install it — those use
+# workspace/qa/ci/). Four jobs, all deterministic, all able to fail:
+#   selfcheck    — the shipped artifact lint accepts the reference fixture and rejects every
+#                  violation in tests/selfcheck.sh; every shipped script parses.
+#   bundle       — the bundle lints itself (tests/bundle.test.mjs): names, context budgets,
+#                  wiring, contract citations, README counts, templates and runners present;
+#                  and the CONTRACTS §17 derivation and its hooks (tests/build-state.test.mjs).
+#   editor       — the VS Code board (editor/vscode-stlc) compiles and its tests pass.
+#   shared-layer — the shared TypeScript layer type-checks and lints clean.
+image: node:22
+
+stages: [check]
+
+variables:
+  npm_config_cache: .npm
+
+cache:
+  key: { files: [workspace/qa/package.json] }
+  paths: [.npm/]
+
+selfcheck:
+  stage: check
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq python3 >/dev/null
+  script:
+    - bash tests/selfcheck.sh
+
+bundle:
+  stage: check
+  script:
+    - node --version
+    - node --test "tests/*.test.mjs"
+
+editor:
+  stage: check
+  script:
+    - cd editor/vscode-stlc
+    - npm ci --no-audit --no-fund
+    - npm run compile
+    - npm test
+
+shared-layer:
+  stage: check
+  script:
+    - cd workspace/qa
+    - npm install --no-audit --no-fund
+    - npm run typecheck
+    - npm run lint

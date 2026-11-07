@@ -1,0 +1,14 @@
+# launch-clean.yaml — start the app from a known state (the twin of a beforeEach restart).
+# Inputs (env): PERMISSIONS — `allow` (default) or `deny`, for the case's ## Device profile.
+# Arrival: waits for the app's first screen id from elements/app.js, so a crash at launch fails here.
+appId: ${APP_ID}
+---
+- launchApp:
+    clearState: true
+    clearKeychain: true
+    permissions:
+      all: ${PERMISSIONS || 'allow'}
+- extendedWaitUntil:
+    visible:
+      id: ${output.app.ready}
+    timeout: ${output.T.appLaunch}

@@ -1,0 +1,18 @@
+# create-order.yaml — the orders factory (the twin of data/orders.factory.ts → create()).
+# Inputs (env): STATUS — the order status to seed (default Draft).
+# Output: output.data.order (the API response), output.unique.order (its name); the delete is
+# registered for cleanup.yaml. Example module — replace the path and body with your API's.
+appId: ${APP_ID}
+---
+- runScript:
+    file: ../../scripts/unique.js
+    env:
+      LABEL: order
+- runScript:
+    file: ../../scripts/api.js
+    env:
+      METHOD: POST
+      PATH: /orders
+      BODY: '{"name":"${output.unique.order}","status":"${STATUS || "Draft"}"}'
+      SAVE_AS: order
+      UNDO: /orders/{id}
